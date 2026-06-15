@@ -191,13 +191,14 @@ orchestrator (L2) and the real `sandbox-runtime` (L1):
 - **Backends.** `LocalSandboxHost` (DEFAULT) runs the method in-process — no Docker,
   no network, deterministic — so the default test suite and all six gates stay green;
   it is honestly a **stand-in** (its TEE attestation is synthetic and structural-only).
-  The **real** operator compute is `SandboxRuntimeHost` in the workspace-excluded
-  `autoresearch-sandbox-runtime` crate, which calls the real `sandbox-runtime`
-  (`create_sidecar` with `runtime_backend`/`tee_required` from the toggle, exec to run
-  the method, `delete_sidecar` on teardown, sealed secrets for TEE). It is excluded
-  because `sandbox-runtime` pins a `blueprint-sdk` version incompatible with this
-  workspace's; the backend compiles standalone (`cargo build --features sandbox-runtime`)
-  but cannot share the default workspace resolution until the pins align.
+  The **real** operator compute is `SandboxRuntimeHost` in the
+  `autoresearch-sandbox-runtime` crate (a workspace member), which calls the real
+  `sandbox-runtime` (`create_sidecar` with `runtime_backend`/`tee_required` from the
+  toggle, exec to run the method, `delete_sidecar` on teardown, sealed secrets for TEE).
+  The whole workspace is pinned to `blueprint-sdk = "=0.2.0-alpha.6"` (matching
+  `sandbox-runtime`), so the real backend builds **in-workspace** behind the
+  `sandbox-runtime` feature (`cargo build -p autoresearch-sandbox-runtime --features
+  sandbox-runtime`); the default build leaves it off to stay fast.
 
 **Honesty:** attestation is **structural-only** today (PRIVACY §12, §7) — capturing
 a report's bytes is not verifying its hardware quote; `verify_structural` never

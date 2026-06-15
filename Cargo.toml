@@ -4,17 +4,17 @@ members = [
     "autoresearch-runtime",
     "autoresearch-protocol",
     "autoresearch-sandbox",
+    "autoresearch-sandbox-runtime",
     "autoresearch-verticals",
     "autoresearch-competitions-lib",
     "autoresearch-competitions-bin",
 ]
-# The REAL operator-compute backend. Excluded because its `sandbox-runtime` git dep
-# pins `blueprint-sdk = "=0.2.0-alpha.6"`, which is semver-incompatible with this
-# workspace's `blueprint-sdk` — a default member carrying that dep would break the
-# default `cargo build` at resolution time. Excluding it keeps the six default gates
-# green while the real backend stays genuinely wired and compile-attemptable on its
-# own (`cargo build --features sandbox-runtime` from its directory).
-exclude = ["autoresearch-sandbox-runtime"]
+# `autoresearch-sandbox-runtime` carries the REAL operator-compute backend behind the
+# `sandbox-runtime` feature. Its `sandbox-runtime` git dep pins
+# `blueprint-sdk = "=0.2.0-alpha.6"`; the whole workspace is pinned to that same
+# version, so the crate is now a first-class member. The default build leaves the
+# feature off (a thin, fast shell); `--features autoresearch-sandbox-runtime/sandbox-runtime`
+# compiles the real Docker / TEE backend against the agent-sandbox blueprint.
 
 [workspace.package]
 authors = ["Tangle Network"]
