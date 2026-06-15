@@ -76,7 +76,7 @@ dependencies = [
 [[package]]
 name = "ai-agent-sandbox-blueprint-lib"
 version = "0.1.0"
-source = "git+https://github.com/tangle-network/ai-agent-sandbox-blueprint.git?branch=chore%2Fsdk-alpha9#eb5cbd293c16c86b86ba0b3d74b352b7ecba488e"
+source = "git+https://github.com/tangle-network/ai-agent-sandbox-blueprint.git?branch=main#085834e3954cfe92b5fc8f9b8ccd202190488c7c"
 dependencies = [
  "blueprint-sdk",
  "chrono",
@@ -8778,7 +8778,7 @@ dependencies = [
 [[package]]
 name = "sandbox-runtime"
 version = "0.1.0"
-source = "git+https://github.com/tangle-network/ai-agent-sandbox-blueprint.git?branch=chore%2Fsdk-alpha9#eb5cbd293c16c86b86ba0b3d74b352b7ecba488e"
+source = "git+https://github.com/tangle-network/ai-agent-sandbox-blueprint.git?branch=main#085834e3954cfe92b5fc8f9b8ccd202190488c7c"
 dependencies = [
  "alloy",
  "async-trait",

@@ -21,7 +21,7 @@ thiserror = "2"
 # The real operator compute, behind the feature. The git dep pins
 # `blueprint-sdk = "=0.2.0-alpha.9"`; the whole workspace is pinned to that version, so
 # this crate is a first-class member (the optional dep keeps the default build thin).
-sandbox-runtime = { git = "https://github.com/tangle-network/ai-agent-sandbox-blueprint.git", branch = "chore/sdk-alpha9", optional = true }
-ai-agent-sandbox-blueprint-lib = { git = "https://github.com/tangle-network/ai-agent-sandbox-blueprint.git", branch = "chore/sdk-alpha9", optional = true }
+sandbox-runtime = { git = "https://github.com/tangle-network/ai-agent-sandbox-blueprint.git", branch = "main", optional = true }
+ai-agent-sandbox-blueprint-lib = { git = "https://github.com/tangle-network/ai-agent-sandbox-blueprint.git", branch = "main", optional = true }
 tokio = { version = "1", features = ["rt", "macros"], optional = true }
 serde_json = { version = "1", optional = true }
