@@ -16,7 +16,7 @@ by a single toggle. A Referee runs the Scorer on a held-out measure and certifie
 the result. Payment settles on-chain for proven improvement, on a leaderboard
 anyone can verify.
 
-> A Tangle Blueprint is a spec for an AVS (Actively Validated Service):
+> A Tangle Blueprint is a spec for an on-chain service operators run and settle on-chain:
 > operators run an off-chain service and settle on-chain (tnt-core 0.13, EVM,
 > x402 payments, staking/slashing). This repo currently holds a hello-world
 > scaffold; these docs describe the real product we are building.

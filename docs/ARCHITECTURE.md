@@ -29,7 +29,7 @@ enclave, selected by a **one-field toggle** (`SandboxBackend`). A **Referee** ru
 the **Scorer** on the **held-out** split inside a TEE, certifies `{value, ci,
 cost, diagnostics}`, and commits the score plus a TEE attestation hash on-chain.
 Escrow pays out for the **outcome** — a certified score — not the **effort**.
-**Validators** are an m-of-n dispute backstop only. **Node Operators** run the AVS
+**Validators** are an m-of-n dispute backstop only. **Node Operators** run the blueprint service
 plane (blueprint binary + sandboxes) and are the **compute and the referee**; they
 do not author candidates.
 
