@@ -25,11 +25,13 @@
 #![forbid(unsafe_code)]
 
 pub mod config_opt;
+pub mod nanogpt;
 pub mod scorers;
 
 pub use config_opt::{
     ConfigArtifact, ConfigSurface, LinearScorer, LocalSearchEngine, SharedSearchContributor,
 };
+pub use nanogpt::{FixedConfigEngine, NanoGptConfig, NanoGptScorer, NanoGptSurface};
 pub use scorers::{
     BlackBoxOptimizerEngine, HiddenTargetSurface, HumanPanelScorer, KindDispatchScorer,
     PrivateOracleScorer, PrivilegedHardwareScorer,
