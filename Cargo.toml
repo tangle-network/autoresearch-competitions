@@ -1,0 +1,23 @@
+[workspace]
+resolver = "3"
+members = [
+    "autoresearch-runtime",
+    "autoresearch-protocol",
+    "autoresearch-sandbox",
+    "autoresearch-sandbox-runtime",
+    "autoresearch-verticals",
+    "autoresearch-competitions-lib",
+    "autoresearch-competitions-bin",
+]
+# `autoresearch-sandbox-runtime` carries the REAL operator-compute backend behind the
+# `sandbox-runtime` feature. Its `sandbox-runtime` git dep pins
+# `blueprint-sdk = "=0.2.0-alpha.6"`; the whole workspace is pinned to that same
+# version, so the crate is now a first-class member. The default build leaves the
+# feature off (a thin, fast shell); `--features autoresearch-sandbox-runtime/sandbox-runtime`
+# compiles the real Docker / TEE backend against the agent-sandbox blueprint.
+
+[workspace.package]
+authors = ["Tangle Network"]
+edition = "2024"
+description = "A Tangle Blueprint for decentralized AI autoresearch"
+license = "MIT OR Apache-2.0"

@@ -1,0 +1,27 @@
+[package]
+name = "autoresearch-sandbox-runtime"
+version = "0.1.0"
+edition = "2024"
+authors = ["Tangle Network"]
+description = "The REAL operator compute: implements autoresearch-sandbox's SandboxHost against the agent-sandbox-blueprint sandbox-runtime (Docker / TEE), behind the `sandbox-runtime` feature."
+license = "MIT OR Apache-2.0"
+
+[features]
+default = []
+# The real backend pulls heavy git deps (Docker / TEE backends). It is gated so the
+# default `cargo build` stays a thin, fast shell; `cargo build --features sandbox-runtime`
+# compiles the real operator compute against the agent-sandbox blueprint.
+sandbox-runtime = ["dep:sandbox-runtime", "dep:ai-agent-sandbox-blueprint-lib", "dep:tokio", "dep:serde_json"]
+
+[dependencies]
+autoresearch-sandbox = { path = "../autoresearch-sandbox" }
+autoresearch-runtime = { path = "../autoresearch-runtime" }
+thiserror = "2"
+
+# The real operator compute, behind the feature. The git dep pins
+# `blueprint-sdk = "=0.2.0-alpha.6"`; the whole workspace is pinned to that version, so
+# this crate is a first-class member (the optional dep keeps the default build thin).
+sandbox-runtime = { git = "https://github.com/tangle-network/ai-agent-sandbox-blueprint.git", branch = "main", optional = true }
+ai-agent-sandbox-blueprint-lib = { git = "https://github.com/tangle-network/ai-agent-sandbox-blueprint.git", branch = "main", optional = true }
+tokio = { version = "1", features = ["rt", "macros"], optional = true }
+serde_json = { version = "1", optional = true }

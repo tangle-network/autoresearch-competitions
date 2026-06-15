@@ -1,0 +1,53 @@
+{
+  "metadata_uri": "ipfs://QmAutoresearchCompetitions",
+  "metadata_file": "metadata/blueprint-metadata.json",
+  "manager": "0x0000000000000000000000000000000000000000",
+  "master_manager_revision": 0,
+  "jobs": [
+    { "name": "create_competition", "description": "Proposer opens a competition and escrows the reward (knobs + sealed scorer ref)" },
+    { "name": "join", "description": "Researcher registers and posts stake" },
+    { "name": "commit_candidate", "description": "Commit phase of commit-reveal (anti-copy)" },
+    { "name": "reveal_candidate", "description": "Reveal phase; the contract verifies keccak256(abi.encode(artifact_ref, salt))" },
+    { "name": "report_score", "description": "Referee commits a certified lift; the handler evaluates the promotion gate" },
+    { "name": "settle", "description": "Rank survivors and pay out per the RewardSchedule" },
+    { "name": "challenge", "description": "Staked dispute of a reported score, triggering m-of-n re-score" },
+    { "name": "tick", "description": "Cron-driven deadline enforcement and continuous-epoch settlement" }
+  ],
+  "sources": [
+    {
+      "kind": "native",
+      "fetcher": "none",
+      "entrypoint": "./target/release/autoresearch-competitions",
+      "artifact_uri": "file:///home/drew/code/autoresearch-competitions/target/release/autoresearch-competitions",
+      "testing": {
+        "cargo_package": "autoresearch-competitions-bin",
+        "cargo_bin": "autoresearch-competitions",
+        "base_path": "."
+      },
+      "binaries": [
+        {
+          "name": "autoresearch-competitions",
+          "arch": "x86_64",
+          "os": "linux",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ]
+    }
+  ],
+  "supported_memberships": ["fixed", "dynamic"],
+  "config": {
+    "membership": "dynamic",
+    "pricing": "pay_once",
+    "min_operators": 1,
+    "max_operators": 10
+  },
+  "metadata": {
+    "name": "Autoresearch Competitions",
+    "description": "Decentralized market for verifiable improvement: post a bounty for a better artifact (agent, model, algorithm), scored on a held-out test; the network competes or collaborates to build it and is paid for proven results.",
+    "author": "Tangle Network",
+    "category": "AI/Research",
+    "code_repository": "https://github.com/tangle-network/autoresearch-competitions",
+    "website": "https://tangle.network",
+    "license": "MIT OR Apache-2.0"
+  }
+}
