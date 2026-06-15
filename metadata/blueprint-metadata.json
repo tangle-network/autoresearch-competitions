@@ -1,0 +1,239 @@
+{
+  "name": "autoresearch-competitions",
+  "description": "Decentralized auto-research competitions: post a bounty for a better artifact, scored on a held-out test. Commit-reveal submissions, a promotion gate on the lower CI bound of the lift, and conserved on-chain settlement.",
+  "author": "Tangle Network",
+  "category": "AI/Research",
+  "image": null,
+  "website": "https://tangle.network",
+  "codeRepository": "https://github.com/tangle-network/autoresearch-competitions",
+  "docs": "https://docs.tangle.tools/",
+  "integrity": null,
+  "jobs": [
+    {
+      "id": 0,
+      "name": "create_competition",
+      "description": "Open a competition and escrow its native reward pool (structure/cadence/visibility/scorer knobs)",
+      "pricing": "heavy"
+    },
+    {
+      "id": 1,
+      "name": "join",
+      "description": "Researcher registers and posts the slashable stake bond",
+      "pricing": "light"
+    },
+    {
+      "id": 2,
+      "name": "commit_candidate",
+      "description": "Commit phase of commit-reveal: submit keccak256(abi.encode(artifactRef, salt))",
+      "pricing": "light"
+    },
+    {
+      "id": 3,
+      "name": "reveal_candidate",
+      "description": "Reveal phase: disclose artifact reference + salt; the contract verifies the commitment",
+      "pricing": "light"
+    },
+    {
+      "id": 4,
+      "name": "report_score",
+      "description": "Referee commits a certified result; the promotion gate is evaluated on the lift's lower CI bound",
+      "pricing": "medium"
+    },
+    {
+      "id": 5,
+      "name": "settle",
+      "description": "Rank candidates and pay out per the RewardSchedule; settlement conserves the escrowed pool",
+      "pricing": "medium"
+    },
+    {
+      "id": 6,
+      "name": "challenge",
+      "description": "Staked dispute of a reported score, triggering re-score",
+      "pricing": "light"
+    },
+    {
+      "id": 7,
+      "name": "tick",
+      "description": "Cron-driven: deadline enforcement and continuous-epoch settlement (operator upkeep, never billed)",
+      "pricing": "free"
+    }
+  ],
+  "blueprintUi": {
+    "displayName": "Autoresearch Competitions",
+    "description": "Decentralized auto-research competitions: post a bounty for a better artifact, scored on a held-out test.",
+    "requestedSlug": "autoresearch-competitions",
+    "publisher": {
+      "name": "Tangle Network",
+      "verified": false
+    },
+    "resources": {
+      "serviceLabel": "Competition market",
+      "itemLabel": "Competition",
+      "itemRoute": "competitions"
+    },
+    "surfaces": {
+      "genericOverview": true,
+      "serviceExplorer": true,
+      "actionsPanel": true,
+      "resources": true,
+      "metrics": true,
+      "permissions": true
+    },
+    "theme": {
+      "badgeLabel": "Hosted on Tangle Cloud",
+      "accentColor": "#0F766E",
+      "secondaryColor": "#0F172A",
+      "icon": "flask-conical"
+    },
+    "overviewCards": [
+      {
+        "id": "operator-health",
+        "kind": "stat",
+        "title": "Referee health",
+        "description": "Operator/referee uptime and adjudication activity for this service.",
+        "value": "99.9%",
+        "tone": "success"
+      },
+      {
+        "id": "promotion-gate",
+        "kind": "stat",
+        "title": "Promotion gate",
+        "description": "Default gate a candidate must clear: lower CI bound of the lift >= 0.02 with n >= 12 paired episodes.",
+        "value": "CI_lower >= 0.02, n >= 12",
+        "tone": "info"
+      },
+      {
+        "id": "operator-links",
+        "kind": "links",
+        "title": "Useful links",
+        "links": [
+          {
+            "label": "Docs",
+            "href": "https://docs.tangle.tools/"
+          },
+          {
+            "label": "Operator runbook",
+            "href": "https://github.com/tangle-network/autoresearch-competitions/blob/main/OPERATORS.md"
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "id": "create-competition",
+        "label": "Post a competition",
+        "description": "Open a competition: escrow a reward pool for a better artifact scored on a held-out test.",
+        "target": "service",
+        "submitLabel": "Open competition",
+        "fields": [
+          {
+            "key": "spec_ref",
+            "label": "Spec reference",
+            "input": "text",
+            "required": true,
+            "placeholder": "ipfs://competition-spec-cid"
+          },
+          {
+            "key": "reward_pool_wei",
+            "label": "Reward pool (wei)",
+            "input": "number",
+            "required": true,
+            "placeholder": "1000000000000000000"
+          },
+          {
+            "key": "deadline",
+            "label": "Deadline (unix ts)",
+            "input": "number",
+            "required": true,
+            "placeholder": "1735689600"
+          },
+          {
+            "key": "structure",
+            "label": "Structure (0 Competitive, 1 Collaborative)",
+            "input": "number",
+            "required": true,
+            "placeholder": "0"
+          },
+          {
+            "key": "cadence",
+            "label": "Cadence (0 OneShot, 1 Continuous)",
+            "input": "number",
+            "required": true,
+            "placeholder": "0"
+          },
+          {
+            "key": "scorer_kind",
+            "label": "Scorer (0 HeldOutEval, 1 PrivateOracle, 2 PrivilegedHardware, 3 HumanPanel)",
+            "input": "number",
+            "required": true,
+            "placeholder": "0"
+          }
+        ]
+      }
+    ],
+    "resourceViews": [
+      {
+        "id": "competitions-table",
+        "title": "Competition ledger",
+        "kind": "table",
+        "target": "resource",
+        "defaultSort": "updated_at:desc",
+        "columns": [
+          {
+            "key": "competition_id",
+            "label": "Competition",
+            "emphasis": true
+          },
+          {
+            "key": "status",
+            "label": "Status",
+            "emphasis": true
+          },
+          {
+            "key": "reward_pool",
+            "label": "Reward pool"
+          },
+          {
+            "key": "best_lift_ci_lower",
+            "label": "Best lift (CI lower)"
+          },
+          {
+            "key": "updated_at",
+            "label": "Updated"
+          }
+        ]
+      }
+    ],
+    "pricing": {
+      "model": "event-driven",
+      "display": "Per-job x402 pricing. CREATE_COMPETITION is heaviest; REPORT_SCORE and SETTLE are medium; JOIN/COMMIT/REVEAL/CHALLENGE are light; TICK is free operator upkeep.",
+      "feeSplit": {
+        "operator": 55,
+        "referee": 30,
+        "validator": 15
+      }
+    },
+    "modules": [
+      {
+        "module": "metrics-overview",
+        "slot": "overview",
+        "metricKeys": [
+          "competitions_open",
+          "candidates_scored",
+          "gate_clear_rate",
+          "settlement_rate"
+        ]
+      },
+      {
+        "module": "resource-events",
+        "slot": "resources",
+        "eventKinds": [
+          "competition_created",
+          "candidate_revealed",
+          "score_reported",
+          "settled"
+        ]
+      }
+    ]
+  }
+}

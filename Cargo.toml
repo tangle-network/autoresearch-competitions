@@ -1,0 +1,15 @@
+[workspace]
+resolver = "3"
+members = [
+    "autoresearch-runtime",
+    "autoresearch-protocol",
+    "autoresearch-verticals",
+    "autoresearch-competitions-lib",
+    "autoresearch-competitions-bin",
+]
+
+[workspace.package]
+authors = ["Tangle Network"]
+edition = "2024"
+description = "A Tangle Blueprint for decentralized AI autoresearch"
+license = "MIT OR Apache-2.0"
