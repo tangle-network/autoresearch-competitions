@@ -3047,9 +3047,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-producers-extra"
-version = "0.2.0-alpha.4"
+version = "0.2.0-alpha.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0726a7d3faa67caaf9b45524fe6602a45618522885583e7633679a7dcaf5020"
+checksum = "9146bd6edc8a990448e71eb36c1966aea56a79b12b0b1e004d85bdaff3b14910"
 dependencies = [
  "blueprint-core",
  "chrono",
