@@ -558,7 +558,7 @@ the agent-sandbox substrate this blueprint builds on (see
    QPU-sec / panel-cost). Charged via x402 at submission. This is what a
    Researcher's stake must cover a few of (§3).
 3. **Protocol service revenue** (per competition / per epoch): the network's cut
-   for running the AVS plane, split across the parties below.
+   for running the blueprint service plane, split across the parties below.
 
 ### Revenue split
 
@@ -568,7 +568,7 @@ trusted resource that runs the held-out scoring — as a first-class earner.
 
 | Party | Share (proposed) | Rationale |
 | --- | --- | --- |
-| **Node Operator** | 55% | Runs the AVS plane: blueprint binary + sandboxes hosting Engines and Referee scoring. The infrastructure cost center. |
+| **Node Operator** | 55% | Runs the blueprint service plane: blueprint binary + sandboxes hosting Engines and Referee scoring. The infrastructure cost center. |
 | **Referee** | 30% | Runs the held-out Scorer in TEE and certifies — the scarce trusted resource; the verify side of solve-hard/verify-easy. Earns per certified score; **slashed on upheld miscertification** (§7). |
 | **Validator** | 15% | m-of-n dispute backstop. Earns the base share for standing ready + the bulk of slashed stake when activated on `CHALLENGE`. |
 

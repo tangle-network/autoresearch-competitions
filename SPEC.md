@@ -157,7 +157,7 @@ private held-out evaluation set.
 - *Gets:* dispute fees / slashed-stake share; only activated on `CHALLENGE`.
 
 ### Node Operator
-- *Goal:* run reliable infrastructure for the AVS and earn fees for hosting the
+- *Goal:* run reliable infrastructure for the blueprint service and earn fees for hosting the
   compute.
 - *Supplies:* a Tangle node running the blueprint binary; the **sandboxed compute
   that runs each researcher's submitted method** next to the proposer's sealed

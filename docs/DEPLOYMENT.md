@@ -58,7 +58,7 @@ Prove the whole thing works on a local anvil before any real chain.
      -- --ignored --nocapture
    ```
 
-   This is the centerpiece proof that the blueprint runs as a live Tangle AVS:
+   This is the centerpiece proof that the blueprint runs as a live Tangle Blueprint service:
    `CREATE_COMPETITION → COMMIT → REVEAL → REPORT_SCORE → SETTLE` all flow as
    on-chain `JobSubmitted` events through `router()` and return the expected
    operator results, with `REPORT_SCORE` evaluating the live promotion gate.

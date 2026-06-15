@@ -30,7 +30,7 @@ collapses to *run the scorer*, exploiting the same solve-hard / verify-easy
 asymmetry that makes NP problems checkable and makes Kaggle work. As a side effect,
 most of the privacy problem dissolves: researchers see scores, not data. The claim
 of this repo is that a decentralized **market for verifiable improvement**, built on
-Tangle as an AVS (Actively Validated Service), is both buildable today and a
+a Tangle Blueprint, is both buildable today and a
 distinct primitive from anything currently shipped.
 
 ---
@@ -399,7 +399,7 @@ Four enabling conditions converged, and none held five years ago:
    first-class contributors. The supply of searchers is no longer bounded by the
    supply of humans.
 3. **Verifiable-compute primitives.** Verifiable inference (EigenAI), state-hash
-   commitments (TOPLOC), ZK proofs, and on-chain settlement (Tangle AVS, x402
+   commitments (TOPLOC), ZK proofs, and on-chain settlement (Tangle Blueprint, x402
    payments) make "run the Scorer and certify the result" enforceable rather than
    trust-me.
 4. **TEE availability.** Trusted execution environments (Phala, AWS Nitro, GCP
