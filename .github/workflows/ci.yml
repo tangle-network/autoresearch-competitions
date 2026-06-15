@@ -60,6 +60,11 @@ jobs:
 
       - uses: taiki-e/github-actions/free-device-space@main
 
+      # blueprint-manager-bridge (transitive via blueprint-sdk) builds protobuf in its
+      # build script and needs protoc; the runner image doesn't ship it.
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
       - name: Run Clippy
         run: cargo clippy --tests --examples -- -D warnings
 
@@ -99,6 +104,11 @@ jobs:
         run: forge update && forge build
 
       - uses: taiki-e/github-actions/free-device-space@main
+
+      # blueprint-manager-bridge (transitive via blueprint-sdk) builds protobuf in its
+      # build script and needs protoc; the runner image doesn't ship it.
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: tests
         run: cargo nextest run
