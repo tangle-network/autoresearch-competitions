@@ -76,7 +76,7 @@ dependencies = [
 [[package]]
 name = "ai-agent-sandbox-blueprint-lib"
 version = "0.1.0"
-source = "git+https://github.com/tangle-network/ai-agent-sandbox-blueprint.git?branch=main#87266cdb7d24553e4cbb6ffc8c5d8982f077f9bb"
+source = "git+https://github.com/tangle-network/ai-agent-sandbox-blueprint.git?branch=chore%2Fsdk-alpha9#eb5cbd293c16c86b86ba0b3d74b352b7ecba488e"
 dependencies = [
  "blueprint-sdk",
  "chrono",
@@ -1749,7 +1749,7 @@ dependencies = [
  "hex",
  "serde",
  "serde_json",
- "sha3 0.10.9",
+ "sha3 0.11.0",
  "thiserror 2.0.18",
  "tokio",
 ]
@@ -1989,7 +1989,7 @@ dependencies = [
  "aws-smithy-runtime-api",
  "aws-smithy-types",
  "h2 0.3.27",
- "h2 0.4.14",
+ "h2 0.4.15",
  "http 0.2.12",
  "http 1.4.2",
  "http-body 0.4.6",
@@ -3047,9 +3047,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-producers-extra"
-version = "0.2.0-alpha.4"
+version = "0.2.0-alpha.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0726a7d3faa67caaf9b45524fe6602a45618522885583e7633679a7dcaf5020"
+checksum = "9146bd6edc8a990448e71eb36c1966aea56a79b12b0b1e004d85bdaff3b14910"
 dependencies = [
  "blueprint-core",
  "chrono",
@@ -3163,9 +3163,9 @@ dependencies = [
 
 [[package]]
 name = "blueprint-sdk"
-version = "0.2.0-alpha.6"
+version = "0.2.0-alpha.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ef536590de938f7b01231b21f44c1acba25cd11fd8aa5dad4936877db33cd5b"
+checksum = "3a3a4ff91decb01c7d3888b3eeea3271a72388a303ffc220c3472152bd2be676"
 dependencies = [
  "alloy",
  "blueprint-auth",
@@ -5062,9 +5062,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.4.14"
+version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "171fefbc92fe4a4de27e0698d6a5b392d6a0e333506bc49133760b3bcf948733"
+checksum = "6cb093c84e8bd9b188d4c4a8cb6579fc016968d14c99882163cd3ff402a4f155"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -5353,7 +5353,7 @@ dependencies = [
  "bytes",
  "futures-channel",
  "futures-core",
- "h2 0.4.14",
+ "h2 0.4.15",
  "http 1.4.2",
  "http-body 1.0.1",
  "httparse",
@@ -8300,7 +8300,7 @@ dependencies = [
  "futures-channel",
  "futures-core",
  "futures-util",
- "h2 0.4.14",
+ "h2 0.4.15",
  "http 1.4.2",
  "http-body 1.0.1",
  "http-body-util",
@@ -8778,7 +8778,7 @@ dependencies = [
 [[package]]
 name = "sandbox-runtime"
 version = "0.1.0"
-source = "git+https://github.com/tangle-network/ai-agent-sandbox-blueprint.git?branch=main#87266cdb7d24553e4cbb6ffc8c5d8982f077f9bb"
+source = "git+https://github.com/tangle-network/ai-agent-sandbox-blueprint.git?branch=chore%2Fsdk-alpha9#eb5cbd293c16c86b86ba0b3d74b352b7ecba488e"
 dependencies = [
  "alloy",
  "async-trait",
@@ -9989,7 +9989,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "bytes",
- "h2 0.4.14",
+ "h2 0.4.15",
  "http 1.4.2",
  "http-body 1.0.1",
  "http-body-util",

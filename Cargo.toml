@@ -11,7 +11,7 @@ members = [
 ]
 # `autoresearch-sandbox-runtime` carries the REAL operator-compute backend behind the
 # `sandbox-runtime` feature. Its `sandbox-runtime` git dep pins
-# `blueprint-sdk = "=0.2.0-alpha.6"`; the whole workspace is pinned to that same
+# `blueprint-sdk = "=0.2.0-alpha.9"`; the whole workspace is pinned to that same
 # version, so the crate is now a first-class member. The default build leaves the
 # feature off (a thin, fast shell); `--features autoresearch-sandbox-runtime/sandbox-runtime`
 # compiles the real Docker / TEE backend against the agent-sandbox blueprint.
