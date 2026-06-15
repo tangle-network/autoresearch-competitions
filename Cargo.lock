@@ -1779,6 +1779,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "autoresearch-training-runtime"
+version = "0.1.0"
+dependencies = [
+ "autoresearch-runtime",
+ "autoresearch-verticals",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "autoresearch-verticals"
 version = "0.1.0"
 dependencies = [

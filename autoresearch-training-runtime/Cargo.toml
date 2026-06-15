@@ -1,0 +1,33 @@
+[package]
+name = "autoresearch-training-runtime"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+description = "The REAL distributed-training compute: implements autoresearch-verticals' TrainingCluster against the open-source prime (Prime Intellect, MIT) and Psyche (Apache-2.0) frameworks, behind the `prime-backend` / `psyche-backend` features."
+license.workspace = true
+
+[features]
+default = []
+# The two heavy EXECUTION paths are feature-gated so the default `cargo build` stays a
+# thin, fast shell that compiles only the pure config-mapping + trait surface. Enabling a
+# feature pulls in `tokio` (the job-submission path is async) and turns on the real
+# process/job-launch + checkpoint-parse body. Neither feature *runs* without the framework
+# installed and GPUs present — they gate the code, not a stub.
+prime-backend = ["dep:tokio"]
+psyche-backend = ["dep:tokio"]
+
+[dependencies]
+autoresearch-verticals = { path = "../autoresearch-verticals" }
+autoresearch-runtime = { path = "../autoresearch-runtime" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+# Async job submission for the real backends, behind the features. The pure mapping and
+# trait surface do not need it, so the default build never compiles it.
+tokio = { version = "1", features = ["rt", "macros", "process"], optional = true }
+
+[dev-dependencies]
+# Drive the async `train()` bodies to completion in unit tests (the no-feature path is
+# immediately ready; we still go through a real runtime so no `unsafe` waker is needed).
+tokio = { version = "1", features = ["rt", "macros"] }
