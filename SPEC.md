@@ -26,10 +26,13 @@ A decentralized market for **verifiable improvement**.
 
 A **Proposer** posts a competition: a **Surface** to improve, a **Scorer** that
 measures it, a **Reward**, and four knobs. A crowd of **Researchers** — human,
-agent, or automated research loop, type-agnostic — produce candidate artifacts
-with their own compute and methods. A **Referee** runs the Scorer on a held-out
-measure, certifies the result, and commits it on-chain. Payment settles for the
-**outcome** (a certified score), not the **effort** (hours, GPUs, headcount).
+agent, or automated research loop, type-agnostic — **submit a method** (an
+auto-research agent / improvement code). They do **not** bring compute and do
+**not** run it: the **Node Operator provides the sandboxed compute and runs the
+researcher's method** inside it, next to the proposer's sealed target. A
+**Referee** runs the Scorer on a held-out measure, certifies the result, and
+commits it on-chain. Payment settles for the **outcome** (a certified score), not
+the **effort** (hours, GPUs, headcount).
 
 The whole mechanism rests on research's **solve-hard / verify-easy asymmetry**:
 producing a better artifact can take enormous compute and ingenuity; confirming
@@ -50,10 +53,10 @@ Canon terms. Other docs use these exact names.
 | Term | Definition |
 | --- | --- |
 | **Proposer** | The demand side. Defines and posts a competition (Surface + Scorer + RewardSchedule + knobs + deadline/policy) and escrows the reward. Pays only for certified improvement. |
-| **Researcher** | The supply side. Produces candidate artifacts scored against the Surface. **Type-agnostic**: a human, an autonomous agent, or an automated research loop. Brings own compute and methods. Earns payout for top-ranked / contributing artifacts. |
+| **Researcher** | The supply side. **Submits a method** — an auto-research agent / improvement code that knows how to improve things — which the **Node Operator runs** on operator-provided sandboxed compute. The researcher brings the *method*, NOT the compute, and never runs it themselves. **Type-agnostic**: a human, an autonomous agent, or an automated research loop. Earns payout for top-ranked / contributing artifacts. |
 | **Referee** | Runs the Scorer on the held-out measure, certifies the score, and commits it on-chain with a TEE attestation hash. Implemented as a TEE service, the Proposer itself, or a committee. The scarce trusted resource. |
 | **Validator** | The dispute backstop. An m-of-n committee that re-scores a challenged result and signs the outcome (EIP-712), enabling slash. Not in the common path. |
-| **Node Operator** | A Tangle infrastructure node running the blueprint binary and the sandboxes that host Researcher engines and Referee scoring. Operates the *plane*, not the *research*. |
+| **Node Operator** | A Tangle infrastructure node running the blueprint binary. **Provides the sandboxed compute and RUNS the researcher's submitted method** inside it (plain Docker sandbox for no-TEE, sealed TEE enclave for TEE — a one-field toggle), then hosts Referee scoring. The operator is the compute and the referee. Operates the *plane*, not the *research*; earns operator fees. **Distinct from Researcher** — the Researcher submits the method, the Operator runs it. |
 
 ### Interfaces (four — pluggable)
 
@@ -61,7 +64,7 @@ Canon terms. Other docs use these exact names.
 | --- | --- |
 | **Surface** | What may change and how a candidate is represented and applied. Examples: agent-profile artifacts (`{skills, prompts, tools, memory}`), model weights, algorithm source, config, a product surface. |
 | **Scorer** | `score(artifact, split) -> {value, ci, cost, diagnostics}`. Runs on a held-out split. May wrap an eval suite, a private oracle, privileged hardware, or a human panel. The thing being paid against. |
-| **Engine** | What a Researcher runs to *produce* candidates: a sandboxed agent self-improvement loop, a DeMo distributed-training run, a black-box optimizer, or a raw human submission. The Engine is the Researcher's business; the protocol is engine-agnostic. |
+| **Engine** | The method that *produces* candidates: a sandboxed agent self-improvement loop, a DeMo distributed-training run, a black-box optimizer, or a raw human submission. The Researcher **submits** the Engine/method; the **Operator runs it** on operator-provided sandboxed compute (the `SandboxMethodEngine` + `SandboxHost` seam, `autoresearch-sandbox`). The method's internals are the Researcher's business; the protocol is engine-agnostic. |
 | **RewardSchedule** | How escrow converts certified scores into payouts: `RecordBounty` (marginal lift over best), `TimeAtTopStreaming`, `SnapshotTopK`, `TerminalPrize`. |
 
 ### The four knobs
@@ -119,22 +122,27 @@ private held-out evaluation set.
 
 ### Researcher subtypes
 
-**Solo agent.** One operator running a sandboxed self-improvement loop.
+**Solo agent.** A method author with one strong self-improvement agent.
 - *Goal:* win top-k payouts across many competitions cheaply.
-- *Supplies:* an Engine (agent loop) producing candidate artifacts; stake.
+- *Supplies:* a **method** (the agent-loop Engine code) **submitted** to the
+  operator; stake. They do **not** supply compute — the operator runs the method.
 - *Gets:* payout for certified top-ranked artifacts; redacted dev-split
   feedback to steer.
 
-**Auto-research firm.** A team or fleet running many Engines and methods.
+**Auto-research firm.** A team that authors many methods.
 - *Goal:* industrialize improvement across a portfolio of competitions.
-- *Supplies:* diverse Engines, large compute, methodology; stake.
+- *Supplies:* diverse **methods** / Engines and methodology, submitted to the
+  operator; stake. The operator provides and runs the compute, not the firm.
 - *Gets:* aggregate payouts; reputation on public leaderboards.
 
-**GPU pool.** Contributes compute to `Collaborative` competitions.
-- *Goal:* monetize GPU-minutes against shared-artifact training runs.
-- *Supplies:* GPU-minutes into a `DistributedTrainingBSM` (DeMo) run.
-- *Gets:* contribution-share payout (contribution = GPU-minutes;
-  **verification is statistical only today — known gap**, see §10).
+**Collaborative method author.** Submits a training-method contribution to a
+`Collaborative` competition.
+- *Goal:* earn a contribution-share of a shared-artifact training run.
+- *Supplies:* a **method** contribution (e.g. a `DistributedTrainingBSM` / DeMo
+  training step) that the operator runs on operator compute.
+- *Gets:* contribution-share payout, priced by **held-out-gated marginal
+  contribution** (the collaborative runner improves on the GPU-minutes baseline,
+  whose statistical-only verification is a **known gap** — see §10).
 
 ### Referee
 - *Goal:* certify scores correctly and cheaply; never leak the held-out set.
@@ -149,12 +157,16 @@ private held-out evaluation set.
 - *Gets:* dispute fees / slashed-stake share; only activated on `CHALLENGE`.
 
 ### Node Operator
-- *Goal:* run reliable infrastructure for the AVS.
-- *Supplies:* a Tangle node running the blueprint binary, sandbox runtime
-  (cloud / instance / tee-instance modes), and the operator API.
+- *Goal:* run reliable infrastructure for the AVS and earn fees for hosting the
+  compute.
+- *Supplies:* a Tangle node running the blueprint binary; the **sandboxed compute
+  that runs each researcher's submitted method** next to the proposer's sealed
+  target — a plain Docker sandbox (no-TEE) or a sealed TEE enclave, selected by a
+  one-field toggle (`SandboxBackend`, `autoresearch-sandbox`); and Referee scoring.
+  The operator is the compute **and** the referee.
 - *Gets:* operator rewards / x402 service revenue; slashed for downtime or
-  faulty provisioning. **Distinct from Researcher** — operates the plane, does
-  not produce candidates.
+  faulty provisioning. **Distinct from Researcher** — the Researcher *submits* the
+  method, the Operator *runs* it; the operator does not author candidates.
 
 ---
 
@@ -385,7 +397,8 @@ what settles on-chain.
 ### A — Private Oracle (quantum withheld circuit)
 
 **Knobs:** `Competitive × OneShot × Private × PrivateOracle`.
-**Engine:** Researcher-side quantum circuit optimizers / classical simulators.
+**Engine:** quantum circuit optimizers / classical simulators — **submitted by the
+Researcher, run by the Operator** in the sandbox against the Referee's oracle.
 **Scorer:** `PrivateOracle` (often also `PrivilegedHardware`) — the Referee
 holds a withheld reference circuit / real QPU and a hidden ground-truth result.
 **RewardSchedule:** `TerminalPrize` (or `SnapshotTopK`).
@@ -393,8 +406,10 @@ holds a withheld reference circuit / real QPU and a hidden ground-truth result.
 Walkthrough:
 1. **Proposer** (open-science host or hardware lab) posts a circuit-optimization
    problem with a withheld reference, escrows the prize → `CREATE_COMPETITION`.
-2. **Researchers** `JOIN` with stake, run their own Engines, and
-   `COMMIT_CANDIDATE` (circuit hash), then `REVEAL_CANDIDATE`.
+2. **Researchers** `JOIN` with stake and **submit their optimizer methods** — the
+   Operator runs them on its compute (the method queries the hidden oracle only via
+   the Referee and never sees the reference) — then `COMMIT_CANDIDATE` (circuit hash)
+   and `REVEAL_CANDIDATE`.
 3. **Referee** runs each revealed circuit against the hidden oracle on
    privileged hardware, certifies fidelity / cost with `ci`, `REPORT_SCORE` +
    attestation. Researchers never see the reference — only their score.
@@ -428,7 +443,9 @@ Walkthrough:
 ### C — Private Enterprise Bounty
 
 **Knobs:** `Competitive × Continuous × Private × HeldOutEval`.
-**Engine:** any — Researchers bring their own (agent loops, optimizers).
+**Engine:** any (agent loops, optimizers) — **submitted by the Researcher and run
+by the Operator** inside a sealed TEE sandbox (the `SandboxBackend::Tee` toggle),
+no-egress, next to the enterprise's sealed data.
 **Scorer:** `HeldOutEval` / `PrivateOracle` over the enterprise's proprietary
 task; **Redacted-feedback** privacy tier (default when feedback is needed).
 **RewardSchedule:** `RecordBounty` (pay only when the record moves) +
@@ -523,8 +540,11 @@ held-out gate (`min_lift_ci_lower 0.02`, `cost_per_task_ceiling`).
 
 - **Auditing how a Researcher worked.** The protocol pays for certified scores,
   not for methods, hours, or compute. We never inspect an Engine.
-- **Being a compute marketplace.** Researchers bring their own compute; Node
-  Operators run the AVS plane. We are not selling GPU-hours as the product.
+- **Being a raw compute marketplace.** The Operator *does* provide the sandboxed
+  compute that runs each submitted method (and charges a fee for it), but the
+  **product** is **certified improvement**, not GPU-hours. We price the outcome a
+  Proposer pays for, not metered compute; operator compute is the substrate, not
+  the sold good.
 - **General confidential compute for arbitrary code.** Privacy is bounded and
   tiered (Black-box / Redacted-feedback / White-box no-egress); a Researcher
   cannot have all of {arbitrary code, raw data access, free egress} — pick ≤ 2

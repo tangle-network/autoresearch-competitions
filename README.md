@@ -8,10 +8,13 @@
 A Tangle Blueprint for a decentralized market in **verifiable improvement**. A
 Proposer posts a competition — a Surface to improve, a Scorer that measures it,
 a Reward, and a few knobs. A crowd of Researchers (humans, agents, or automated
-research loops, type-agnostic) produce candidate artifacts using their own
-compute and methods. A Referee runs the Scorer on a held-out measure and
-certifies the result. Payment settles on-chain for proven improvement, on a
-leaderboard anyone can verify.
+research loops, type-agnostic) **submit a method** — an auto-research agent /
+improvement code. They do **not** bring compute: the **Node Operator provides the
+sandboxed compute and runs the researcher's method** inside it, next to the
+proposer's sealed target — a plain Docker sandbox or a sealed TEE enclave, chosen
+by a single toggle. A Referee runs the Scorer on a held-out measure and certifies
+the result. Payment settles on-chain for proven improvement, on a leaderboard
+anyone can verify.
 
 > A Tangle Blueprint is a spec for an AVS (Actively Validated Service):
 > operators run an off-chain service and settle on-chain (tnt-core 0.13, EVM,
@@ -62,7 +65,7 @@ Every competition is defined by four orthogonal knobs. Any combination is valid.
 | | `PrivilegedHardware` | Score on hardware only the Referee can run. |
 | | `HumanPanel` | Score via a panel of human judges. |
 
-**Reference scenario A** is `Competitive × Continuous × Public × PrivateOracle`;
+**Reference scenario A** is `Competitive × OneShot × Private × PrivateOracle`;
 **B** is `Competitive × Continuous × Public × HeldOutEval`; **C** is
 `Competitive × OneShot × Private × HeldOutEval`. The four knobs span the product.
 
@@ -82,16 +85,23 @@ sandboxes that scale out horizontally and across instances.
                          └──────────────┬───────────────────────────┘
                                         │ schedules / settles
                                         ▼
+  Researchers ──submit methods──▶ ─────────────────────────────────────┐
+  (supply; bring the METHOD,                                            │
+   NOT the compute)                                                     ▼
                          ┌──────────────────────────────────────────┐
                          │   Node Operator fleet (Tangle infra)      │
-                         │   runs the blueprint binary + sandboxes   │
+                         │   PROVIDES the compute, RUNS each method  │
+                         │   + is the Referee. One-field toggle:     │
+                         │   SandboxBackend = Docker (no-TEE) | Tee  │
                          └──────────────┬───────────────────────────┘
             ┌───────────────────────────┼───────────────────────────┐
             ▼                           ▼                           ▼
    ┌─────────────────┐        ┌─────────────────┐        ┌─────────────────┐
-   │ Researcher      │        │ Researcher      │        │ Researcher      │
-   │ sandbox         │  ...   │ sandbox         │  ...   │ sandbox         │
-   │ (Engine)        │        │ (Engine)        │        │ (Engine)        │
+   │ OPERATOR        │        │ OPERATOR        │        │ OPERATOR        │
+   │ sandbox runs    │  ...   │ sandbox runs    │  ...   │ sandbox runs    │
+   │ submitted       │        │ submitted       │        │ submitted       │
+   │ method          │        │ method (TEE:    │        │ method          │
+   │ (Docker)        │        │ sealed+no-egr.) │        │ (Docker)        │
    └────────┬────────┘        └────────┬────────┘        └────────┬────────┘
             └───────── candidate artifacts ───────────────────────┘
                                         │
@@ -107,13 +117,16 @@ sandboxes that scale out horizontally and across instances.
 
 This blueprint:
 
-- **Builds on** the [agent-sandbox blueprint](https://github.com/tangle-network) —
-  consumes the sandbox-runtime layer (TEE backends Phala / Nitro / GCP / Azure,
-  sealed secrets, cloud / instance / tee-instance modes).
+- **Builds on** the [agent-sandbox blueprint](https://github.com/tangle-network) as
+  the **wired operator compute** — the `SandboxHost` seam (`autoresearch-sandbox`)
+  provisions a sandbox and runs each submitted method via `sandbox-runtime` (TEE
+  backends Phala / Nitro / GCP / Azure, sealed secrets, cloud / instance /
+  tee-instance modes). The default `LocalSandboxHost` is an in-process stand-in for
+  tests; the real `SandboxRuntimeHost` is feature-gated (`autoresearch-sandbox-runtime`).
 - **Mirrors** the ai-trading-blueprint patterns —
-  provision / configure / start / stop / status / deprovision jobs, a
-  per-researcher sidecar Docker agent loop, validator m-of-n EIP-712 attestation,
-  a self-improvement loop, and x402 pricing.
+  provision / configure / start / stop / status / deprovision jobs, an
+  operator-hosted sidecar Docker agent loop that runs the submitted method,
+  validator m-of-n EIP-712 attestation, a self-improvement loop, and x402 pricing.
 - **Composes** the training-blueprint as the `Collaborative` Engine (DeMo
   distributed training over pooled compute).
 - **Uses the Improvement-Plane as the agent Scorer substrate** — certified causal
@@ -126,7 +139,7 @@ This blueprint:
 | --- | --- |
 | **Surface** | What may change, and how a candidate artifact is represented and applied. |
 | **Scorer** | `score(artifact, split) -> {value, ci, cost, diagnostics}`; runs on held-out data. May wrap an eval suite, a private oracle, privileged hardware, or a human panel. |
-| **Engine** | What a Researcher runs to produce candidates: a sandboxed agent self-improvement loop, a DeMo distributed-training run, a black-box optimizer, or a raw human submission. |
+| **Engine** | The method that produces candidates: a sandboxed agent self-improvement loop, a DeMo distributed-training run, a black-box optimizer, or a raw human submission. The Researcher **submits** it; the **Operator runs** it on operator-provided sandboxed compute (`SandboxMethodEngine` + `SandboxHost`). |
 | **RewardSchedule** | `RecordBounty` (marginal lift over best) · `TimeAtTopStreaming` · `SnapshotTopK` · `TerminalPrize`. |
 
 ### Roles
@@ -134,10 +147,10 @@ This blueprint:
 | Role | In the market |
 | --- | --- |
 | **Proposer** | Demand side; posts the competition and funds escrow. |
-| **Researcher** | Supply side; produces scored artifacts. Human, agent, or automated loop. |
+| **Researcher** | Supply side; **submits a method** that the Operator runs. Brings the method, NOT the compute, and never runs it themselves. Human, agent, or automated loop. |
 | **Referee** | Runs the Scorer, certifies results, commits them on-chain (TEE service, the Proposer, or a committee). |
 | **Validator** | The m-of-n dispute backstop. |
-| **Node Operator** | Tangle infra node running the blueprint binary and sandboxes. *Distinct from a Researcher.* |
+| **Node Operator** | Tangle infra node running the blueprint binary. **Provides the sandboxed compute and RUNS the researcher's submitted method** (Docker no-TEE or sealed TEE enclave — a one-field toggle), and is the Referee. *Distinct from a Researcher: the Researcher submits the method, the Operator runs it.* |
 
 ---
 
@@ -145,7 +158,7 @@ This blueprint:
 
 - **A — Private Oracle (frontier science).** Improve against a hidden reference
   the Proposer never reveals (e.g. a withheld quantum circuit benchmark).
-  `Competitive × Continuous × Public × PrivateOracle`.
+  `Competitive × OneShot × Private × PrivateOracle`.
 - **B — Public Continuous Arena.** A verifiable, challengeable, moving
   leaderboard with a marketing microsite — the open arena play.
   `Competitive × Continuous × Public × HeldOutEval`.

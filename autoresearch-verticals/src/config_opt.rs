@@ -308,6 +308,17 @@ impl LocalSearchEngine {
         Self { seed }
     }
 
+    /// Run the search synchronously and return the produced candidate.
+    ///
+    /// This is the same candidate [`Engine::produce`] yields (which is a ready future
+    /// over this), exposed as a plain function so an operator-hosted method runner (the
+    /// `autoresearch-sandbox` `LocalMethod` stand-in) can execute the method
+    /// in-process without driving an executor. Deterministic per seed.
+    #[must_use]
+    pub fn produce_candidate(&self) -> ConfigArtifact {
+        self.search()
+    }
+
     /// The actual search, factored out so it is trivially deterministic and testable.
     /// Holds its own scorer (its own copy of the dataset) — a researcher's engine
     /// never shares the Referee's scorer instance.

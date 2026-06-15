@@ -198,6 +198,22 @@ where
         return Err(ProtocolError::Privacy(PrivacyError::AttestationRequired));
     }
 
+    // (a.1b) Tier→sandbox binding (the seam the TEE toggle must be enforced at). A tier
+    // that lets the method touch raw data (white-box / attested-harness) must run that
+    // method inside a SEALED (TEE) sandbox — an *attested referee* is not enough, the
+    // ENGINE that runs the method is a different sandbox and must itself seal it,
+    // otherwise the "method runs next to the data without the researcher seeing it"
+    // guarantee is hollow. Reject an unsealed engine here, before any data handle is
+    // built. `make_engine` is expected to yield engines of uniform isolation for a
+    // competition (the operator picks one backend), so a representative engine suffices.
+    if cfg.tier.requires_attestation()
+        && researchers
+            .first()
+            .is_some_and(|r| !make_engine(r).provides_sealed_isolation())
+    {
+        return Err(ProtocolError::Privacy(PrivacyError::AttestationRequired));
+    }
+
     // (a.2) Brokered-egress contract (PRIVACY §6). For tiers that drop free egress
     // the safety barrier is the egress policy, not just the declarative
     // `free_egress: false` capability bit. Require a fail-closed (`default_deny`)
@@ -420,6 +436,76 @@ mod tests {
         }
     }
 
+    /// A `FixedEngine` that declares sealed (TEE) isolation — stands in for a
+    /// `SandboxMethodEngine` on a TEE backend, without depending on the sandbox crate.
+    struct SealedEngine(f64);
+    impl Engine for SealedEngine {
+        type Artifact = ScalarArtifact;
+        fn id(&self) -> &str {
+            "sealed-fixed"
+        }
+        fn provides_sealed_isolation(&self) -> bool {
+            true
+        }
+        fn produce(
+            &self,
+            _ctx: &EngineContext,
+        ) -> impl std::future::Future<Output = Result<Self::Artifact, EngineError>> + Send {
+            std::future::ready(Ok(ScalarArtifact(self.0)))
+        }
+    }
+
+    /// The tier→sandbox binding is enforced at the protocol seam: a tier that lets the
+    /// method touch raw data (white-box / attested-harness) must run it in a SEALED
+    /// engine. An unsealed engine is rejected fail-closed; a sealed one clears the
+    /// binding (and then only fails later because the LOCAL referee cannot satisfy a
+    /// real TEE — a separate, already-tested guarantee).
+    #[tokio::test]
+    async fn attestation_tier_rejects_an_unsealed_engine() {
+        let researchers = vec![ResearcherRun {
+            researcher: "0xr".into(),
+            seed: 1,
+        }];
+        let mut cfg = black_box_cfg();
+        cfg.tier = PrivacyTier::WhiteBoxNoEgress;
+        cfg.required_tee = TeeType::PhalaTdx; // satisfy the required_tee guard (a.1)
+        cfg.egress = Some(EgressPolicy::no_egress()); // satisfy the egress guard (a.2)
+
+        let unsealed = run_private_competitive(
+            &cfg,
+            &ScalarSurface,
+            &ScalarScorer,
+            &ScalarArtifact(0.5),
+            &researchers,
+            |_run| FixedEngine(0.9),
+        )
+        .await;
+        assert!(
+            matches!(
+                unsealed,
+                Err(ProtocolError::Privacy(PrivacyError::AttestationRequired))
+            ),
+            "an attestation tier must reject an unsealed engine, got {unsealed:?}"
+        );
+
+        let sealed = run_private_competitive(
+            &cfg,
+            &ScalarSurface,
+            &ScalarScorer,
+            &ScalarArtifact(0.5),
+            &researchers,
+            |_run| SealedEngine(0.9),
+        )
+        .await;
+        assert!(
+            !matches!(
+                sealed,
+                Err(ProtocolError::Privacy(PrivacyError::AttestationRequired))
+            ),
+            "a sealed engine must pass the tier->sandbox binding, got {sealed:?}"
+        );
+    }
+
     fn private_knobs() -> Knobs {
         Knobs {
             structure: Structure::Competitive,
@@ -549,7 +635,9 @@ mod tests {
             &ScalarScorer,
             &ScalarArtifact(0.5),
             &researchers,
-            |_| FixedEngine(0.9),
+            // Sealed engine so the run clears the tier->sandbox binding (a.1b) and the
+            // attestation guard is the thing under test.
+            |_| SealedEngine(0.9),
         )
         .await
         .unwrap_err();
@@ -598,7 +686,7 @@ mod tests {
             &ScalarScorer,
             &ScalarArtifact(0.5),
             &researchers,
-            |_| FixedEngine(0.9),
+            |_| SealedEngine(0.9),
         )
         .await
         .unwrap_err();
@@ -663,7 +751,7 @@ mod tests {
             &ScalarScorer,
             &ScalarArtifact(0.5),
             &researchers,
-            |_| FixedEngine(0.9),
+            |_| SealedEngine(0.9),
         )
         .await
         .unwrap_err();
@@ -689,7 +777,7 @@ mod tests {
             &ScalarScorer,
             &ScalarArtifact(0.5),
             &researchers,
-            |_| FixedEngine(0.9),
+            |_| SealedEngine(0.9),
         )
         .await
         .unwrap_err();

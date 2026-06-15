@@ -160,4 +160,15 @@ pub trait Engine {
         &self,
         ctx: &EngineContext,
     ) -> impl Future<Output = Result<Self::Artifact, EngineError>> + Send;
+
+    /// Whether this engine runs the researcher's method inside a sealed, TEE-isolated
+    /// sandbox — so the method can touch the proposer's data without the researcher
+    /// ever seeing it. Defaults to `false`: a plain in-process / non-TEE engine seals
+    /// nothing. The private runner *requires* this for privacy tiers that mandate
+    /// attestation (`PrivacyTier::requires_attestation`), so an unsealed engine cannot
+    /// be used to run a white-box / attested-harness competition — the tier→sandbox
+    /// binding is enforced at the protocol seam, not left to caller convention.
+    fn provides_sealed_isolation(&self) -> bool {
+        false
+    }
 }

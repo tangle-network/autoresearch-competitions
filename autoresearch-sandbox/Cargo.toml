@@ -1,0 +1,16 @@
+[package]
+name = "autoresearch-sandbox"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+description = "The operator-compute seam: provision a sandbox (Local / Docker / TEE) and run a researcher-submitted method against a proposer's sealed target. The TEE/no-TEE toggle is one field."
+license.workspace = true
+
+[dependencies]
+autoresearch-runtime = { path = "../autoresearch-runtime" }
+autoresearch-protocol = { path = "../autoresearch-protocol" }
+thiserror = "2"
+
+[dev-dependencies]
+autoresearch-verticals = { path = "../autoresearch-verticals" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

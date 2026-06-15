@@ -21,19 +21,24 @@ honest attestation status. For incentives and dispute math see
 
 A **Proposer** posts a competition `(Surface, Scorer, RewardSchedule, four
 knobs)` and escrows a reward. **Researchers** (human, agent, or automated loop —
-type-agnostic) produce candidate artifacts using their own compute via an
-**Engine**. A **Referee** runs the **Scorer** on the **held-out** split inside a
-TEE, certifies `{value, ci, cost, diagnostics}`, and commits the score plus a
-TEE attestation hash on-chain. Escrow pays out for the **outcome** — a certified
-score — not the **effort**. **Validators** are an m-of-n dispute backstop only.
-**Node Operators** run the AVS plane (blueprint binary + sandboxes); they do not
-produce candidates.
+type-agnostic) **submit a method** (an **Engine** — agent self-improvement loop,
+optimizer, training step). They do **not** bring compute. The **Node Operator
+provides the sandboxed compute and runs the researcher's method** inside it, next
+to the proposer's sealed target — a plain Docker sandbox (no-TEE) or a sealed TEE
+enclave, selected by a **one-field toggle** (`SandboxBackend`). A **Referee** runs
+the **Scorer** on the **held-out** split inside a TEE, certifies `{value, ci,
+cost, diagnostics}`, and commits the score plus a TEE attestation hash on-chain.
+Escrow pays out for the **outcome** — a certified score — not the **effort**.
+**Validators** are an m-of-n dispute backstop only. **Node Operators** run the AVS
+plane (blueprint binary + sandboxes) and are the **compute and the referee**; they
+do not author candidates.
 
 The whole mechanism rests on research's **solve-hard / verify-easy asymmetry**:
 producing a better artifact is expensive; confirming it scored higher on a
 held-out test is one cheap reproducible run. So the chain stores only the cheap,
 verifiable part — commitments, certified scores, attestation hashes, payouts —
-and the heavy part — sandboxes, Engines, datasets, traces — lives off-chain.
+and the heavy part — **operator-hosted sandboxes running researcher methods**,
+datasets, traces — lives off-chain.
 
 ```
    DEMAND                  SETTLEMENT SPINE (EVM, tnt-core 0.13)              SUPPLY / COMPUTE
@@ -52,20 +57,22 @@ and the heavy part — sandboxes, Engines, datasets, traces — lives off-chain.
                                 ▼                 │             ▼
   ┌──────────┐            ┌─────────────────┐  ┌──┴──────────┐  ┌────────────────────┐
   │RESEARCHER│  JOIN /    │  NODE OPERATOR  │  │  VALIDATOR  │  │  NODE OPERATOR     │
-  │(human/   │  COMMIT /  │  FLEET          │  │  COMMITTEE  │  │  (sandbox host)    │
+  │(human/   │  COMMIT /  │  FLEET          │  │  COMMITTEE  │  │  (compute+referee) │
   │ agent/   │  REVEAL    │                 │  │  2-of-3     │  │                    │
   │ loop)    │───────────▶│ operator API    │  │  EIP-712    │  │ sandbox-runtime L1 │
   └────┬─────┘  via API   │  :9200          │  │  re-score   │  │ ┌────────────────┐ │
-       │ runs own         │ domain  API     │  │  on dispute │  │ │ Researcher     │ │
-       │ Engine           │  :9100          │  └─────────────┘  │ │ sidecar(Engine)│ │
-       ▼                  └────────┬────────┘                   │ └────────────────┘ │
-  ┌──────────────────┐             │ dispatch                   │ ┌────────────────┐ │
-  │ candidate        │             ▼                            │ │ REFEREE        │ │
-  │ artifact (hash   │     ┌────────────────────────────────┐   │ │ Scorer in TEE  │ │
-  │ committed,       │     │  REFEREE (attested TEE eval)   │   │ │ held-out split │ │
-  │ artifact off-    │────▶│  score(artifact, HeldOut)      │──▶│ │ → {value,ci,   │ │
-  │ chain)           │     │  → certified lift + attest.    │   │ │    cost} + hash│ │
-  └──────────────────┘     └────────────────────────────────┘   │ └────────────────┘ │
+       │ SUBMITS a        │ domain  API     │  │  on dispute │  │ │ OPERATOR runs  │ │
+       │ method (Engine)  │  :9100          │  └─────────────┘  │ │ method sandbox │ │
+       ▼                  └────────┬────────┘                   │ │ Docker|TEE     │ │
+  ┌──────────────────┐             │ provision+run              │ │ (1-field tgl)  │ │
+  │ method ref (the  │             ▼                            │ └────────────────┘ │
+  │ submitted Engine;│     ┌────────────────────────────────┐   │ ┌────────────────┐ │
+  │ operator runs it │     │  REFEREE (attested TEE eval)   │   │ │ REFEREE        │ │
+  │ on its compute,  │────▶│  score(candidate, HeldOut)     │──▶│ │ Scorer in TEE  │ │
+  │ candidate off-   │     │  → certified lift + attest.    │   │ │ held-out split │ │
+  │ chain)           │     └────────────────────────────────┘   │ │ → {value,ci,   │ │
+  └──────────────────┘                                          │ │    cost} + hash│ │
+                                                                 │ └────────────────┘ │
                                                                  └────────────────────┘
                                     │
                                     ▼
@@ -86,9 +93,12 @@ continuous arena):
 1. **Proposer** calls `CREATE_COMPETITION` (job 0): escrows reward, commits the
    sealed Scorer ref, four knobs, and RewardSchedule. The competition goes
    `Draft → Open`. One on-chain row.
-2. **Researcher** calls `JOIN` (job 1, posts stake), runs its Engine in a
-   sandbox provisioned by a Node Operator, and produces a candidate. It calls
-   `COMMIT_CANDIDATE` (job 2) with only the **artifact hash**.
+2. **Researcher** calls `JOIN` (job 1, posts stake) and **submits a method**
+   (its Engine, by reference). The **Node Operator provisions a sandbox and runs
+   the submitted method** inside it (the `SandboxMethodEngine` + `SandboxHost`
+   seam, §2.x), producing a candidate next to the proposer's sealed target. The
+   Researcher / operator calls `COMMIT_CANDIDATE` (job 2) with only the **artifact
+   hash**.
 3. After the commit window, `REVEAL_CANDIDATE` (job 3) discloses the artifact to
    the Referee — over the domain API, not on-chain. The chain stores the hash; the
    artifact bytes never touch it.
@@ -153,6 +163,46 @@ The agent **Scorer** vertical (`HeldOutEval` over an AgentProfile) reuses the
 evidence ledger, and the R2 validity guards. The **Collaborative** path reuses
 the **training blueprint** (DeMo, `DistributedTrainingBSM.sol`) by dispatching
 its jobs — not by importing its internals (that would violate `L2 → L2`).
+
+### 2.x The operator-compute seam — `SandboxHost` + the TEE/no-TEE toggle
+
+The point where a **researcher-submitted method runs on operator compute** is the
+`autoresearch-sandbox` crate. It is the clean seam between the engine-agnostic
+orchestrator (L2) and the real `sandbox-runtime` (L1):
+
+- **`SandboxBackend`** — the **one-field TEE/no-TEE toggle**. `Local` (in-process,
+  test/dev), `Docker` (a real plain sandbox, no-TEE), `Tee(TeeType)` (a sealed
+  enclave). `is_tee()` / `requires_sealed_inputs()` derive from it; `for_competition(tier,
+  required_tee)` selects it (a `WhiteBoxNoEgress`/`AttestedHarness` tier with a real
+  TEE → `Tee`, else `Docker`). Flipping the field is the *only* change between a
+  plain-container and a sealed-enclave competition — the method, engine, and scorer
+  are identical.
+- **`SandboxHost`** — `provision(req) → run_method(handle, method, ctx) → teardown(handle)`.
+  The operator's job: stand up the sandbox (mapping `Tee` → `tee_required` + sealed
+  inputs + a captured **structural** attestation on the handle), run the researcher's
+  submitted `method` against the proposer's sealed target, and tear down. For a TEE
+  backend, `SandboxProvisionReq::validate` is **fail-closed**: an open or missing
+  egress policy is rejected, so the no-egress invariant (PRIVACY §5.3, M4) holds.
+- **`SandboxMethodEngine<H>`** — implements the orchestrator's `Engine`. Its `produce`
+  is the full operator flow (provision → run method → resolve candidate → teardown),
+  so it drops into `run_oneshot_competitive` / `run_private_competitive` unchanged.
+  This **replaces the in-process stand-in** (`LocalSearchEngine` running on the
+  researcher side) with operator-hosted execution.
+- **Backends.** `LocalSandboxHost` (DEFAULT) runs the method in-process — no Docker,
+  no network, deterministic — so the default test suite and all six gates stay green;
+  it is honestly a **stand-in** (its TEE attestation is synthetic and structural-only).
+  The **real** operator compute is `SandboxRuntimeHost` in the workspace-excluded
+  `autoresearch-sandbox-runtime` crate, which calls the real `sandbox-runtime`
+  (`create_sidecar` with `runtime_backend`/`tee_required` from the toggle, exec to run
+  the method, `delete_sidecar` on teardown, sealed secrets for TEE). It is excluded
+  because `sandbox-runtime` pins a `blueprint-sdk` version incompatible with this
+  workspace's; the backend compiles standalone (`cargo build --features sandbox-runtime`)
+  but cannot share the default workspace resolution until the pins align.
+
+**Honesty:** attestation is **structural-only** today (PRIVACY §12, §7) — capturing
+a report's bytes is not verifying its hardware quote; `verify_structural` never
+returns `Verified`. The `agent-sandbox-blueprint` (`sandbox-runtime`) is the **wired**
+operator compute (feature-gated real backend + local default), not an aspiration.
 
 ---
 
@@ -528,7 +578,7 @@ trust boundary; nothing proprietary crosses it the wrong way.
   CREATE_COMPETITION ─▶ escrow + sealed
    (withheld circuit)   Scorer ref
                                             JOIN (stake) ─────────▶ chain
-                                            run own optimizer
+                                            submit optimizer (operator-run)
                                             COMMIT_CANDIDATE ─────▶ chain (hash only)
             ═══════════════ artifact bytes never on-chain ═══════════════
                                             REVEAL ─(domain API)──────────▶ circuit bytes
