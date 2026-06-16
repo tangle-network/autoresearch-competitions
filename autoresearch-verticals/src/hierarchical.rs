@@ -18,11 +18,16 @@
 //!
 //! # The two forces the hierarchy trades off
 //!
-//! 1. **Effective scale.** More clusters mean more independent replicas seeing
-//!    more data in parallel. Like the island term inside one cluster, this is a
-//!    log-diminishing win (`-k_bonus * ln(k)` on the loss proxy). A `k`-way
-//!    hierarchy at the same recipe reaches a *lower* training loss than a single
-//!    cluster — that is the whole reason to go hierarchical.
+//! 1. **Effective scale (a *modeled* credit).** The model credits more clusters
+//!    with a lower loss via a closed-form, log-diminishing term (`-k_bonus * ln(k)`
+//!    on the loss proxy) — the cross-cluster analogue of Phase 0's per-island
+//!    `ISLAND_GAIN`. Be precise about what this is: a **pure function of `k`** that
+//!    does *not* read the inner clusters' loss values. It stands in for "more
+//!    replicas process more data in parallel" without asserting the merge actually
+//!    exploited replica diversity — a degenerate hierarchy of identical inner
+//!    clusters earns the same credit. A real `prime`/Psyche backend is what would
+//!    turn that credit into a genuine win; here it is the modeled reason a `k`-way
+//!    hierarchy reaches a lower loss than a single cluster at the same recipe.
 //! 2. **Cross-cluster drift.** The outer-outer sync only fires every
 //!    [`cross_sync_interval`](HierarchicalCluster::cross_sync_interval) inner
 //!    rounds. Push that interval too high and the per-cluster replicas drift apart
@@ -409,8 +414,12 @@ mod tests {
 
     #[test]
     fn distinct_per_cluster_seeds_decorrelate_replicas() {
-        // Each inner cluster trains under a distinct seed, so a k>1 hierarchy is
-        // not just k identical replicas (which would defeat the parallelism).
+        // Each inner cluster trains under a distinct seed, so the replicas are
+        // genuinely distinct runs (as a real multi-site hierarchy would be). This
+        // decorrelation is provenance, NOT the source of the scale credit:
+        // `scale_bonus` is a pure function of `k` (see `merge_loss`), so identical
+        // replicas would win by the same margin — a real backend's decorrelated
+        // work is what would earn it in substance.
         let s0 = HierarchicalCluster::<LocalSimCluster>::cluster_seed(100, 0);
         let s1 = HierarchicalCluster::<LocalSimCluster>::cluster_seed(100, 1);
         assert_ne!(s0, s1, "per-cluster seeds must differ across replicas");

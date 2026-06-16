@@ -540,32 +540,28 @@ mod tests {
             "frontier bought exactly once"
         );
 
-        // The per-record marginals telescope to the final best (no gap double-paid).
-        let summed_marginals: i64 = outcome
-            .results
-            .iter()
-            .filter_map(|r| r.became_record.then_some(()).and(r.lift_micros))
-            .scan(0i64, |prev, cur| {
-                let marginal = cur - *prev;
-                *prev = cur;
-                Some(marginal)
-            })
-            .sum();
-        assert_eq!(
-            summed_marginals, final_micros,
-            "marginals telescope to the final best"
-        );
+        // (We intentionally do NOT assert that the per-record marginals "telescope" to
+        // the final best: a sum of consecutive differences is `last - first` by
+        // arithmetic, so that check is a tautology that proves nothing about payouts.
+        // The load-bearing invariant is the `total == final * WEI_PER_MICRO` check
+        // above — the frontier is bought exactly once, in wei.)
     }
 
-    /// A re-submission of an already-beaten (or equal) recipe pays zero: the gain was
-    /// already bought, so it is never paid twice for the same frontier.
+    /// A re-submission of an already-beaten (or equal) recipe pays zero: the market
+    /// pays on the MEASURED held-out marginal over the standing best, not on recipe
+    /// novelty. Bob resubmits Alice's recipe, but it trains under a different seed
+    /// whose per-seed noise (TRAIN_NOISE = 0.005 > epsilon = 0.001) lands at a *worse*
+    /// measured value, so it clears no epsilon over the record and pays zero — the
+    /// gain was already bought.
     #[test]
     fn non_improving_resubmission_pays_zero() {
         let m = market();
         let strong = recipe(8, 32, 0.2, 3e-3);
         let subs = vec![
             RecipeSubmission::new("alice", strong), // sets the record
-            RecipeSubmission::new("bob", strong),   // identical => no marginal => 0
+            // Same recipe, later seed: its measured held-out value did not clear
+            // epsilon over Alice's record, so no marginal is paid.
+            RecipeSubmission::new("bob", strong),
             RecipeSubmission::new("carol", recipe(4, 32, 0.1, 3e-3)), // weaker => 0
         ];
         let outcome = m.run(&subs);
@@ -698,8 +694,9 @@ mod tests {
         let artifact = LocalSimCluster.train_sync(&recipe(4, 32, 0.1, 3e-3), 9);
 
         // The honest held-out value is `-loss`; a lying cluster claims it is much
-        // better (value far above the true one — i.e. a far lower loss). 0.5 points
-        // is two orders of magnitude beyond the eval-noise CI half-width (~0.01).
+        // better (value far above the true one — i.e. a far lower loss). 0.5 points is
+        // ~160x the per-referee eval-noise CI half-width (~0.003), so it sits well
+        // outside every honest referee's interval.
         let honest =
             DistributedTrainingScorer::new(EVAL_SHARDS).score_sync(&artifact, Split::HeldOut);
         let inflated_claim = honest.value + 0.5;
@@ -720,14 +717,51 @@ mod tests {
         );
     }
 
-    /// A claim just outside a minority of referees' CIs but inside the majority's is
-    /// still accepted — the quorum is `m`, not unanimity — proving the panel is a
-    /// genuine m-of-n vote rather than an all-or-nothing check.
+    /// A *near-boundary* cheat: a modest fraudulent inflation that is only a couple of
+    /// CI band-widths above the honest value (not the trivially-extreme +0.5 of the
+    /// test above) is still rejected by the majority. +0.005 is 5x the gate epsilon
+    /// (0.001) — unambiguously fraudulent — yet under 2x the per-referee CI half-width
+    /// (~0.003), so it lands just past the upper bound of every honest referee's
+    /// interval and no referee accepts it. The offset was found empirically against
+    /// the seeded measurements; this is the boundary the panel actually has to defend,
+    /// not a strawman.
+    #[test]
+    fn majority_rejects_a_near_boundary_cheat() {
+        let panel = RescorePanel::majority(5, 13); // n=5, m=3, shards 13..=17
+        let artifact = LocalSimCluster.train_sync(&recipe(4, 32, 0.1, 3e-3), 9);
+        let honest =
+            DistributedTrainingScorer::new(EVAL_SHARDS).score_sync(&artifact, Split::HeldOut);
+
+        // Fraudulent-but-modest: 5x epsilon, ~1.7x the CI half-width.
+        let modest_cheat = honest.value + 0.005;
+        let verdict = panel.judge_claim(&artifact, modest_cheat);
+
+        assert!(
+            !verdict.accepted,
+            "a modest near-boundary inflation must still be rejected by the majority: {verdict:?}"
+        );
+        assert!(
+            verdict.accepting < verdict.quorum,
+            "fewer than m referees accept the modest cheat: {verdict:?}"
+        );
+        // It is genuinely a cheat, not noise: well beyond the gate's epsilon band.
+        assert!(
+            modest_cheat - honest.value > (EPSILON_MICROS as f64) / 1e6,
+            "the inflation exceeds the market's epsilon — it is a real cheat, not slack"
+        );
+        // The consensus still tracks the honest re-score, not the inflated claim.
+        assert!(
+            (verdict.consensus_value - honest.value).abs() < 0.005,
+            "consensus tracks the honest re-score: {verdict:?}"
+        );
+    }
+
+    /// The panel decision is the m-of-n count, and `accepted == (accepting >= quorum)`
+    /// is wired correctly. This probes the *honest* value (every referee accepts), so
+    /// it pins the panel's plumbing but NOT its majority behaviour — the split-vote
+    /// regime is exercised by `quorum_accepts_on_a_genuine_split_vote` below.
     #[test]
     fn quorum_is_m_of_n_not_unanimous() {
-        // Construct a panel where the referees have slightly different CIs (distinct
-        // shard counts), then probe a claim near the boundary and confirm the panel
-        // decision is the m-of-n count, not a single referee's.
         let panel = RescorePanel::new(&[12, 16, 64], 2); // n=3, m=2
         let artifact = LocalSimCluster.train_sync(&recipe(8, 32, 0.2, 3e-3), 4);
         let honest =
@@ -739,6 +773,63 @@ mod tests {
         assert!(verdict.accepted);
         assert_eq!(verdict.quorum, 2);
         assert_eq!(verdict.verdicts.len(), 3);
+    }
+
+    /// The distinguishing regime: a SPLIT vote where a strict minority of referees
+    /// reject and the majority accept, so `0 < accepting < n` and the panel accepts
+    /// only because the quorum is `m`, not `n`. This is what proves the panel is a
+    /// genuine m-of-n majority rather than an all-or-nothing (any/all) check — an
+    /// all-accept or all-reject probe would pass identically for quorum 1, 2, or 3.
+    ///
+    /// Construction: the three referees re-score the same artifact with different
+    /// shard counts `[12, 16, 64]`. The standard-error CI half-width shrinks with `n`,
+    /// so the `n=64` referee has the *narrowest* interval (half-width ~0.0015 vs
+    /// ~0.0028 for `n=12`) and a slightly different center (a different sample of the
+    /// seeded per-shard eval noise). A claim placed just *above* the narrow referee's
+    /// upper CI bound but still inside the two wider intervals is rejected by exactly
+    /// that one referee and accepted by the other two. The offset (+0.0015 over the
+    /// honest value) was found empirically against the seeded measurements.
+    #[test]
+    fn quorum_accepts_on_a_genuine_split_vote() {
+        let panel = RescorePanel::new(&[12, 16, 64], 2); // n=3, m=2
+        let artifact = LocalSimCluster.train_sync(&recipe(8, 32, 0.2, 3e-3), 4);
+        let honest =
+            DistributedTrainingScorer::new(EVAL_SHARDS).score_sync(&artifact, Split::HeldOut);
+
+        // Just above the narrow (n=64) referee's upper CI bound, inside the wider two.
+        let split_claim = honest.value + 0.0015;
+        let verdict = panel.judge_claim(&artifact, split_claim);
+
+        // Strict split: not everyone agrees, but a quorum does.
+        assert!(
+            verdict.accepting > 0 && verdict.accepting < panel.size(),
+            "must be a genuine split vote (0 < accepting < n): {verdict:?}"
+        );
+        assert_eq!(
+            verdict.accepting, 2,
+            "the two wider-CI referees accept; the narrow one rejects: {verdict:?}"
+        );
+        assert!(
+            verdict.accepted,
+            "a 2-of-3 split clears the m=2 quorum: {verdict:?}"
+        );
+        // The lone dissenter is exactly the narrowest-CI (n=64) referee.
+        let dissenter = verdict
+            .verdicts
+            .iter()
+            .find(|v| !v.accepts_claim)
+            .expect("one referee must reject in a split");
+        assert_eq!(
+            dissenter.eval_shards, 64,
+            "the narrowest CI (largest shard count) is the dissenter: {verdict:?}"
+        );
+        // The decision is genuinely majority-gated: a unanimity (m=n=3) panel on the
+        // SAME measurements and SAME claim would reject it.
+        let unanimous = RescorePanel::new(&[12, 16, 64], 3);
+        assert!(
+            !unanimous.judge_claim(&artifact, split_claim).accepted,
+            "the identical claim fails a unanimous panel — so acceptance is the m-of-n vote"
+        );
     }
 
     /// A non-finite self-report fails closed: no referee accepts a NaN claim, so the
