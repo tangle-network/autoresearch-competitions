@@ -26,8 +26,11 @@
 
 pub mod config_opt;
 pub mod distributed_training;
+pub mod hierarchical;
 pub mod nanogpt;
 pub mod scorers;
+pub mod tee_cluster;
+pub mod training_market;
 
 pub use config_opt::{
     ConfigArtifact, ConfigSurface, LinearScorer, LocalSearchEngine, SharedSearchContributor,
@@ -36,8 +39,14 @@ pub use distributed_training::{
     DistributedTrainingEngine, DistributedTrainingScorer, DistributedTrainingSurface,
     LocalSimCluster, TrainedArtifact, TrainingCluster, TrainingRecipe,
 };
+pub use hierarchical::HierarchicalCluster;
 pub use nanogpt::{FixedConfigEngine, NanoGptConfig, NanoGptScorer, NanoGptSurface};
 pub use scorers::{
     BlackBoxOptimizerEngine, HiddenTargetSurface, HumanPanelScorer, KindDispatchScorer,
     PrivateOracleScorer, PrivilegedHardwareScorer,
+};
+pub use tee_cluster::TeeSimCluster;
+pub use training_market::{
+    ContinuousMarketOutcome, ContinuousTrainingMarket, PanelVerdict, RecipeSubmission,
+    RefereeVerdict, RescorePanel, SubmissionResult,
 };

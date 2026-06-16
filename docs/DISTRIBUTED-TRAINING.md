@@ -71,63 +71,81 @@ real DiLoCo/DeMo tradeoffs, proving the market mechanism end-to-end with no GPUs
       market certifies the two genuine improvements (+0.28, +0.19 val-loss) and
       gates all three failure modes (island drift, over-compression, bad LR).
 
-### Phase 1 — Real cluster adapter 🟡 ⛔
+### Phase 1 — Real cluster adapter ✅ ⛔ (code shipped; execution infra-gated)
 
-Implement `TrainingCluster` against a live backend, behind a feature flag exactly
-like `autoresearch-sandbox-runtime` gates the real sandbox backend.
+Crate `autoresearch-training-runtime`, mirroring how `autoresearch-sandbox-runtime`
+gates the real sandbox backend (`default = []`; `prime-backend` / `psyche-backend`
+gate the heavy execution path).
 
-- [ ] New crate `autoresearch-training-runtime` with feature `training-runtime`.
-- [ ] `PrimeCluster` — submits a recipe as a training job to a `prime` run (MIT);
-      maps `TrainingRecipe` → `prime` config; returns the trained checkpoint ref.
-- [ ] `PsycheCluster` — alternative backend against a Psyche client (Apache-2.0).
-- [ ] Artifact transport: the trained checkpoint is content-addressed; only the
-      ref flows through the ledger, never the weights.
-- [ ] Held-out re-score runs **on the market's operators**, not the training
-      cluster — the trust boundary.
+- [x] `PrimeCluster` (prime, MIT) + `PsycheCluster` (Psyche, Apache-2.0) implement
+      `TrainingCluster`; drop into `DistributedTrainingEngine` unchanged.
+- [x] `recipe_to_prime_config` / `recipe_to_psyche_config` — pure, unit-tested
+      mapping of `TrainingRecipe` → a real prime/DiLoCo (or Psyche/DeMo) run config.
+- [x] Feature-off `train()` returns a named `EngineError::Backend`; feature-on
+      builds the real `tokio::process` invocation + checkpoint parse.
+- [x] `provides_sealed_isolation()` tracks a TEE flag (`.with_tee()`).
+- [ ] ⛔ Actually *running* a checkpoint needs `prime`/Psyche installed + GPUs /
+      operator instances. The code is real; the execution is not exercised here.
 
-### Phase 2 — `training-blueprint` realism 🔶 ⛔
+### Phase 2 — `training-blueprint` realism ✅ (PR open in sibling repo)
 
-Make the sibling distributed-training blueprint a real comm-efficient trainer
-(this is the "improve the realism of that blueprint" work).
+> **Assessment correction:** the repo was *not* pricing by GPU-minutes. It is a real
+> Tangle Blueprint already using **DeMo** (Nous) for comm-efficient training; the
+> actual gap was that an on-chain result was just a **checkpoint hash + a loose
+> gradient-norm check** — nothing proved the checkpoint was *better* than the base
+> model. An operator could submit a well-formed hash and get paid for no improvement.
 
-- [ ] Replace the GPU-minutes contribution metric with held-out-gated lift
-      (the known gap noted in `docs/MECHANISM.md §6.1`).
-- [ ] Wrap `prime`/DeMo as the operator training core; Coordinator role becomes a
-      Tangle service job, Clients are the m-of-n operators.
-- [ ] Multi-node training *within* one instance (data/model/pipeline parallel).
-- [ ] Expose a job interface the `PrimeCluster`/`PsycheCluster` adapter calls.
+- [x] `operator/src/eval_gate.rs` — held-out eval gate certifying a checkpoint only
+      if it beats the base model on a private held-out split with a **CI lower bound
+      ≥ 0.02** (the same bar as this market). Deterministic seeded bootstrap, 8 tests.
+- [x] `TrainingJobResult` ABI gains `heldOutCertified` / `improvementBps` /
+      `ciLowerBoundBps`; reward attaches to certified improvement, not a bare hash.
+- [x] Shipped as **tangle-network/training-blueprint#10** (build/test/clippy/fmt green).
+- [ ] On-chain *enforcement*: the BSM does not yet withhold/slash reward when
+      `certified == false` (ABI carries the fields; Solidity gating is the follow-up).
+- [ ] Backend `/eval_held_out` endpoint (the operator-side contract is wired; the
+      training server must implement the private held-out split).
 
-### Phase 3 — Trust & verification 🟡
+### Phase 3 — Trust & verification ✅
 
-- [ ] m-of-n re-score of the returned checkpoint on the held-out split (reuse the
-      dispute/slash path already in `autoresearch-protocol`).
-- [ ] Deterministic eval harness so re-scores are reproducible across operators.
-- [ ] Reward schedules for training: `RecordBounty` for a continuous training
-      leaderboard (pay marginal loss reduction), `SnapshotTopK` for one-shot.
+`autoresearch-verticals/src/training_market.rs`:
 
-### Phase 4 — Cross-instance hierarchy 🟡 ⛔
+- [x] `ContinuousTrainingMarket` — king-of-the-hill leaderboard paying the
+      **marginal** held-out loss reduction via `settle_record_bounty` (the
+      frontier is bought exactly once; non-improving resubmission pays zero).
+- [x] `RescorePanel` — m-of-n independent referees re-score the same artifact;
+      majority rejects a divergent self-reported score. Deterministic, 10 tests.
 
-Train **one model across k m-of-n clusters** (the tightly-coupled regime).
+### Phase 4 — Cross-instance hierarchy ✅ ⛔ (composition shipped; real run infra-gated)
 
-- [ ] Hierarchical DiLoCo: tight sync *within* a cluster, infrequent outer sync
-      *across* clusters (the DiLoCo outer optimizer / Psyche coordinator pattern).
-- [ ] Coordinator-of-coordinators as a Tangle service spanning k instances.
-- [ ] Bandwidth budget surfaced as the `Measurement.cost` the gate's
-      `cost_per_task_ceiling` already prices.
+`autoresearch-verticals/src/hierarchical.rs`:
 
-### Phase 5 — Privacy / TEE binding 🟡
+- [x] `HierarchicalCluster<C>` — composes k inner `TrainingCluster`s and **is itself
+      a `TrainingCluster`** (nests), so it drops into the market unchanged. Models
+      the scale bonus (`-k_bonus·ln k`) net of a cross-cluster **drift penalty** that
+      grows with a too-loose outer-sync interval. 8 tests.
+- [ ] ⛔ A real run across k live instances (the coordinator-of-coordinators as a
+      Tangle service) needs operator infra; the dynamics composition is simulated.
 
-- [ ] `provides_sealed_isolation()` returns true for a TEE-backed training cluster;
-      the private runner already refuses a non-sealed engine for attestation-
-      mandating tiers (the binding is enforced, not convention).
-- [ ] Structural attestation of the training enclave (inherits the same
-      structural-only limitation documented in `docs/PRIVACY.md`).
+### Phase 5 — Privacy / TEE binding ✅
+
+`autoresearch-verticals/src/tee_cluster.rs`:
+
+- [x] `TeeSimCluster<C>` — wraps an inner cluster, reports sealed isolation, exposes
+      a **structural-only** attestation (honest: same gap as `docs/PRIVACY.md`; not a
+      verified enclave). A test drives the **real** `run_private_competitive`: an
+      unsealed training engine fails the tier→cluster binding with `AttestationRequired`,
+      while a `TeeSimCluster`-backed one clears it (then fails later at the honest
+      structural-attestation seam — the documented §12 gap, not a defect).
 
 ## 5. Honest status
 
-Shipped today: **Phase 0** — the market drives a real (simulated-dynamics)
-distributed-training competition, green in CI. Everything in Phases 1–5 is design
-+ checklist; the training itself is **not** wrapped yet, and Phases 1/2/4 need live
-GPU service instances. The hard ML (DiLoCo/DeMo) is solved and open — the remaining
-work is the adapters + the Tangle-native trust/economic layer around them, not the
-training algorithms.
+Shipped: **Phase 0** (one-shot training market) plus **Phases 1, 3, 4, 5** as real,
+tested, CI-green code in this repo, and **Phase 2** as an open PR in the sibling
+`training-blueprint` repo. What is **simulated** (not real GPU training): the
+`LocalSimCluster` / `HierarchicalCluster` dynamics and the prime/Psyche *execution*
+path (feature-gated, needs the frameworks + GPUs). What is **real and exercised**:
+the cluster-agnostic seam, the recipe→config mappings, the continuous-market and
+m-of-n re-score mechanics, the TEE→cluster binding, and (in `training-blueprint`) the
+held-out certification gate. The remaining ⛔ items all need live GPU/operator infra
+or on-chain enforcement wiring — the algorithms (DiLoCo/DeMo) are solved and open.

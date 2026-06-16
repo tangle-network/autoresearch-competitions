@@ -291,7 +291,11 @@ impl DistributedTrainingScorer {
         Self { eval_shards }
     }
 
-    fn measure(&self, artifact: &TrainedArtifact, split: Split) -> Measurement {
+    /// Synchronous scoring core, exposed so sync callers (the training-market
+    /// continuous leaderboard and m-of-n re-score panel in `training_market`) can
+    /// re-score an artifact without driving the always-ready `Scorer::score` future.
+    #[must_use]
+    pub fn measure(&self, artifact: &TrainedArtifact, split: Split) -> Measurement {
         let loss = match split {
             Split::Dev => artifact.train_loss,
             Split::HeldOut => artifact.train_loss + artifact.recipe.generalization_gap(),
