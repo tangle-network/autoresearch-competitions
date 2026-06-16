@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 autoresearch-runtime = { path = "../autoresearch-runtime" }
 autoresearch-protocol = { path = "../autoresearch-protocol" }
+autoresearch-supervisor = { path = "../autoresearch-supervisor" }
 
 [dev-dependencies]
 serde_json = "1"

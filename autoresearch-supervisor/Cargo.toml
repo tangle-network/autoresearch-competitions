@@ -1,0 +1,26 @@
+[package]
+name = "autoresearch-supervisor"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+description = "The universal improvement engine: one RSI SupervisorEngine (backed by @tangle-network/agent-runtime's long-horizon supervisor) that improves ANY artifact against ANY scorer. Every algorithmic-advancement domain collapses to writing a Scorer — the Engine is shared."
+license.workspace = true
+
+[features]
+default = []
+# The real backend drives the @tangle-network/agent-runtime supervisor (the RSI agent
+# that runs long-horizon improvement) as a subprocess. It is gated so the default build
+# stays a thin, deterministic shell (the in-process local-search stand-in); enabling it
+# pulls in tokio for the async process/JSON path. Like the prime/Psyche backends, the
+# code is real but EXECUTION needs Node + the agent-runtime package + model credentials.
+agent-runtime = ["dep:tokio"]
+
+[dependencies]
+autoresearch-runtime = { path = "../autoresearch-runtime" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt", "macros", "process"], optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
