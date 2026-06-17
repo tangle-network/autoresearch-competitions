@@ -17,5 +17,5 @@ tokio = { version = "1", default-features = false, features = ["sync"] }
 [dev-dependencies]
 alloy-primitives = "1"
 anyhow = "1"
-blueprint-anvil-testing-utils = "0.2.0-alpha.1"
+blueprint-anvil-testing-utils = "0.2.0-alpha.9"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

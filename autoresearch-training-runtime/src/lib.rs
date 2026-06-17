@@ -330,6 +330,7 @@ async fn subprocess_train(
         recipe: *recipe,
         train_seed: seed,
         train_loss,
+        checkpoint_hash: [0u8; 32],
     })
 }
 
@@ -460,6 +461,7 @@ async fn service_train(
         recipe: *recipe,
         train_seed: seed,
         train_loss,
+        checkpoint_hash: [0u8; 32],
     })
 }
 

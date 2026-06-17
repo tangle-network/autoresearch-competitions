@@ -89,7 +89,7 @@ async fn submits_job_and_polls_to_completion() {
                     "current_loss": 2.123f32,
                     "operators": 1,
                     "completed": true,
-                    "latest_checkpoint_hash": "deadbeef",
+                    "latest_checkpoint_hash": "0x0000000000000000000000000000000000000000000000000000000000000001",
                 }))
                 .insert_header("content-type", "application/json"),
         )
@@ -106,6 +106,13 @@ async fn submits_job_and_polls_to_completion() {
     assert_eq!(artifact.train_seed, 7);
     assert!((artifact.train_loss - 2.123).abs() < 1e-6);
     assert_eq!(artifact.recipe, recipe());
+    assert_eq!(
+        artifact.checkpoint_hash,
+        [
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+        ]
+    );
 
     drop(status_mock);
 }
