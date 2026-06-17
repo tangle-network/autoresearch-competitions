@@ -1,0 +1,31 @@
+[package]
+name = "autoresearch-training-blueprint-adapter"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+description = "TrainingCluster adapter for the training-blueprint Tangle Blueprint operator HTTP API."
+license.workspace = true
+
+[features]
+default = []
+# The real HTTP execution path: submits recipes to a running training-blueprint
+# operator, polls job status, and reconstructs train_loss from the held-out eval.
+# Default build stays a thin shell so CI does not need a GPU or a live operator.
+operator-backend = ["dep:reqwest", "dep:tokio"]
+
+[dependencies]
+autoresearch-runtime = { path = "../autoresearch-runtime" }
+autoresearch-verticals = { path = "../autoresearch-verticals" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+# Real HTTP client + async runtime, gated behind operator-backend.
+reqwest = { version = "0.12", features = ["json"], optional = true }
+tokio = { version = "1", features = ["rt", "macros", "time"], optional = true }
+
+[dev-dependencies]
+# Drive async train() bodies in unit tests.
+tokio = { version = "1", features = ["rt", "macros"] }
+# Mock the training-blueprint operator HTTP API in tests.
+wiremock = "0.6"
