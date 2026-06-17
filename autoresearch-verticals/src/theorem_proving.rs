@@ -28,12 +28,11 @@
 //! # The honest seam — this is NOT a real proof kernel
 //!
 //! The checker here is a closed-form predicate over the tactic vector, not Lean /
-//! Coq / Isabelle running a real kernel. It is the marked stand-in for the live
-//! agent-runtime backend that drives a real prover (the same honesty boundary as the
-//! `prime`/`psyche` training backends). What it *does* prove is the **market
-//! mechanism around delegated proving**: a binary accept/reject checker, held-out
-//! re-scoring of a delegated proof, the promotion gate refusing invalid or
-//! over-long proofs, and a real CI from a cheap repeated check.
+//! Coq / Isabelle running a real kernel. It is the marked stand-in for a live
+//! external prover backend. What it *does* prove is the **market mechanism around
+//! delegated proving**: a binary accept/reject checker, held-out re-scoring of a
+//! delegated proof, the promotion gate refusing invalid or over-long proofs, and a
+//! real CI from a cheap repeated check.
 //!
 //! # Dev vs held-out — why the gate is meaningful
 //!

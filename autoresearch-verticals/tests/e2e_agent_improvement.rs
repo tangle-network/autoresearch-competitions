@@ -1,13 +1,12 @@
-//! End-to-end: the autoresearch market runs the flagship **agent self-improvement**
-//! (Improvement-Plane) competition and pays only for certified, GENERALIZING lift.
+//! End-to-end: the autoresearch market runs an **agent-profile** competition and pays
+//! only for certified, GENERALIZING lift.
 //!
 //! Several researchers improve an agent profile against the SAME universal
-//! [`SupervisorEngine`] — the deterministic stand-in for `@tangle-network/agent-runtime`'s
-//! recursive-self-improvement loop. They differ ONLY by their start profile, their
-//! search budget, and their seed — not by a different engine. Every engine maximizes
-//! the researcher-visible **dev** task-suite pass-rate; the market's Referee then
-//! re-scores each produced profile on a **held-out** task suite, gates it on a Wilson
-//! CI, ranks, and pays.
+//! [`SupervisorEngine`] — the deterministic stand-in for a recursive-self-improvement
+//! loop. They differ ONLY by their start profile, their search budget, and their seed
+//! — not by a different engine. Every engine maximizes the researcher-visible **dev**
+//! task-suite pass-rate; the market's Referee then re-scores each produced profile on
+//! a **held-out** task suite, gates it on a Wilson CI, ranks, and pays.
 //!
 //! The honest tension this proves: the dev signal rewards a profile that over-tunes to
 //! the dev split (the `overfit` knob), so a researcher who over-searches the dev signal
@@ -26,7 +25,7 @@ use autoresearch_runtime::traits::Scorer;
 use autoresearch_runtime::types::{Cadence, Gate, Knobs, ScorerKind, Split, Structure, Visibility};
 use autoresearch_supervisor::{GenericArtifact, GenericSurface, SupervisorEngine};
 use autoresearch_verticals::agent_improvement::{
-    ImprovementPlaneScorer, baseline_profile, profile_from_knobs,
+    AgentProfileScorer, baseline_profile, profile_from_knobs,
 };
 
 const POOL_WEI: u128 = 1_000_000;
@@ -102,7 +101,7 @@ fn start_artifact(name: &str) -> GenericArtifact {
 #[tokio::test]
 async fn market_improves_agent_on_heldout() {
     let surface = GenericSurface;
-    let scorer = ImprovementPlaneScorer::new(N_TASKS);
+    let scorer = AgentProfileScorer::new(N_TASKS);
 
     // Baseline: the zero-knob starting agent, scored on held-out. A candidate must beat
     // THIS held-out pass-rate (by a gate-clearing CI margin) to certify lift and be paid.
@@ -112,7 +111,7 @@ async fn market_improves_agent_on_heldout() {
         .await
         .expect("baseline scores");
     println!(
-        "\n=== agent self-improvement market (Improvement-Plane) — {N_TASKS} tasks ===\n\
+        "\n=== agent self-improvement market (agent-profile stand-in) — {N_TASKS} tasks ===\n\
          baseline (zero-knob agent): held-out pass_rate = {:.4} \
          (Wilson CI [{:.4}, {:.4}], n={})",
         base_m.value, base_m.ci_lower, base_m.ci_upper, base_m.n,

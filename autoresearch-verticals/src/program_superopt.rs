@@ -44,12 +44,11 @@
 //!
 //! # Honest seam — NOT a real superoptimizer
 //!
-//! The real artifact is the *source/IR the live `agent-runtime` backend writes and
-//! actually benchmarks* (Node + the agent-runtime package + a real benchmark harness).
-//! This module models the *market mechanism around superoptimization*: searching an
-//! optimization encoding, held-out re-scoring of a delegated candidate, the correctness
-//! constraint refusing fast-but-wrong programs, and the gate refusing recipes whose
-//! speedup does not generalize.
+//! The real artifact is the source/IR a real compiler/superoptimizer backend writes
+//! and actually benchmarks. This module models the *market mechanism around
+//! superoptimization*: searching an optimization encoding, held-out re-scoring of a
+//! delegated candidate, the correctness constraint refusing fast-but-wrong programs,
+//! and the gate refusing recipes whose speedup does not generalize.
 
 use std::future::Future;
 

@@ -4,10 +4,11 @@
 //! - [`Scorer`]   — how "better" is measured on a held-out split.
 //! - [`Engine`]   — how a researcher produces candidate artifacts.
 //!
-//! Auto-research-for-agents is the first vertical because the Improvement-Plane
-//! already provides a [`Scorer`]. Everything else (model fine-tuning, algorithm
-//! superoptimization, the quantum private-oracle case) is a different
-//! `Surface`/`Scorer`/`Engine` triple over the same competition machinery.
+//! Auto-research-for-agents is the first vertical because a closed-form
+//! agent-profile stand-in provides a [`Scorer`] out of the box. Everything else
+//! (model fine-tuning, algorithm superoptimization, the quantum private-oracle case)
+//! is a different `Surface`/`Scorer`/`Engine` triple over the same competition
+//! machinery.
 //!
 //! These signatures are `(proposed)`; they pin the *shape* of the seams for M0
 //! and will be refined as the first concrete adapters land in M1+.

@@ -28,8 +28,8 @@
 //! and a held-out distribution shift that punishes weights over-fit to the training
 //! instances — so a moderately-tuned submission produces a *real*, gate-clearing
 //! held-out lift while an over-searched one fails the gate, with no solver, no clock,
-//! and no I/O (so it runs in CI). The real artifact is the live agent-runtime backend
-//! job that emits an actual heuristic/solver; `value = +objective` (higher is better).
+//! and no I/O (so it runs in CI). A real external solver backend can be plugged in
+//! behind the same `Engine`/`Scorer` seams; `value = +objective` (higher is better).
 
 use std::future::Future;
 

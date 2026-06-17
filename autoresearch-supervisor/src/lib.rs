@@ -13,21 +13,22 @@
 //!   ones the dev [`Scorer`] rewards. No `rand`, no clock, no I/O, so every vertical's
 //!   CI proof is byte-reproducible. This is what the program-superopt / solver /
 //!   theorem-proving / agent verticals drive in tests.
-//! - [`AgentRuntimeSupervisor`] (feature `agent-runtime`) — the **real** backend: it
-//!   drives `@tangle-network/agent-runtime`'s long-horizon **RSI supervisor** (the
-//!   recursive-self-improvement agent) as a subprocess over the submitted task, then
-//!   parses back the improved artifact. Both implement `Engine<Artifact =
-//!   GenericArtifact>`, so swapping the stand-in for the live RSI agent is a one-line
-//!   change at the call site.
+//! - [`SubprocessEngine`] (feature `subprocess-backend`) — an **external-process**
+//!   backend: it shells out to a caller-supplied driver binary with a JSON manifest
+//!   describing the task, then parses the returned artifact content from stdout. Both
+//!   implement `Engine<Artifact = GenericArtifact>`, so swapping the stand-in for the
+//!   subprocess backend is a one-line change at the call site. The driver is supplied
+//!   by the caller; this crate does not ship one.
 //!
 //! ## Honest seam — the stand-in does not "think"
 //!
 //! The stand-in is a *search over a numeric encoding* (`GenericArtifact::params`),
 //! which is what lets a deterministic test show the market certifies a real,
 //! gate-clearing lift across domains. It does not read or write source code, proofs,
-//! or prompts — that is the live agent-runtime backend's job, and it needs Node + the
-//! `agent-runtime` package + model credentials to actually run (the same honesty
-//! boundary as the `prime`/`psyche` training backends).
+//! or prompts. A real external solver/prover/agent loop can be plugged in behind
+//! [`SubprocessEngine`] by providing a driver that consumes the manifest protocol and
+//! emits improved artifact content; until then, the market mechanism is exercised by
+//! the deterministic stand-in.
 
 #![forbid(unsafe_code)]
 
@@ -68,8 +69,8 @@ pub enum ArtifactKind {
 /// - `params` — a numeric encoding the deterministic [`SupervisorEngine`] searches
 ///   and a domain [`Scorer`] decodes into its metric. This is what makes one engine
 ///   work across every domain in CI.
-/// - `content` — the real artifact text (source, proof, prompt, profile) the live
-///   `agent-runtime` backend operates on and what `to_ref` content-addresses.
+/// - `content` — the real artifact text (source, proof, prompt, profile) an
+///   external backend operates on and what `to_ref` content-addresses.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GenericArtifact {
     pub kind: ArtifactKind,
@@ -191,7 +192,7 @@ pub const DEFAULT_BUDGET: usize = 256;
 /// search that proposes [`GenericArtifact`] candidates and keeps the ones the dev
 /// [`Scorer`] rewards. Generic over the dev scorer, so the *same* engine improves a
 /// program, a solver, a proof, an agent, or a forecaster — each is just a different
-/// `Sc`. The live RSI backend is [`AgentRuntimeSupervisor`].
+/// `Sc`. The external-process backend is [`SubprocessEngine`].
 #[derive(Clone, Debug)]
 pub struct SupervisorEngine<Sc> {
     researcher: String,
@@ -261,7 +262,7 @@ where
     type Artifact = GenericArtifact;
 
     fn id(&self) -> &str {
-        "rsi-supervisor-local"
+        "local-search"
     }
 
     fn produce(
@@ -303,13 +304,13 @@ where
     }
 }
 
-// --- The real RSI backend (agent-runtime) -----------------------------------
+// --- Subprocess backend (honest external-process seam) ----------------------
 
-/// The task manifest handed to the `agent-runtime` RSI supervisor: what to improve,
-/// where to start, and how much long-horizon budget it has. Serialized to JSON and
-/// passed to the subprocess; the driver returns the improved `content`.
+/// The task manifest handed to the external driver: what to improve, where to start,
+/// and how much long-horizon budget it has. Serialized to JSON and passed to the
+/// subprocess; the driver returns the improved `content`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct AgentRuntimeManifest {
+pub struct SubprocessManifest {
     pub kind: ArtifactKind,
     /// The baseline artifact `content` the supervisor improves from.
     pub baseline_content: String,
@@ -320,32 +321,34 @@ pub struct AgentRuntimeManifest {
     pub dev_eval_cmd: Option<String>,
 }
 
-/// The real universal engine: drives `@tangle-network/agent-runtime`'s long-horizon
-/// **RSI supervisor** over the submitted task. Implements the same `Engine` as
-/// [`SupervisorEngine`], so it is a drop-in for the deterministic stand-in.
+/// An external-process engine that shells out to a caller-supplied driver binary.
+/// Implements the same `Engine` as [`SupervisorEngine`], so it is a drop-in for the
+/// deterministic stand-in.
 ///
-/// **Honest status:** the code below builds the real subprocess invocation and parses
-/// the returned artifact, but EXECUTION needs Node + the `agent-runtime` package + the
-/// driver script + model credentials. Without the `agent-runtime` feature, `produce`
-/// returns a named [`EngineError::Backend`]. The market never trusts what comes back —
-/// the Referee re-scores the produced artifact on held-out, exactly as for any engine.
+/// **Honest status:** this is a generic subprocess seam, not an integration with any
+/// specific external framework. `produce` builds the manifest, spawns the driver, and
+/// parses stdout. Without the `subprocess-backend` feature, `produce` returns a named
+/// [`EngineError::Backend`]. The market never trusts what comes back — the Referee
+/// re-scores the produced artifact on held-out, exactly as for any engine.
 #[derive(Clone, Debug)]
-pub struct AgentRuntimeSupervisor {
+pub struct SubprocessEngine {
     researcher: String,
-    /// The node/driver entrypoint that runs the agent-runtime supervisor (e.g.
-    /// `"node"` with a driver script, or a wrapper binary on `$PATH`).
+    /// The driver binary invoked with `--manifest <json>`. This is supplied by the
+    /// caller; this crate does not ship a driver.
     pub driver: String,
-    pub manifest: AgentRuntimeManifest,
+    pub manifest: SubprocessManifest,
     pub sealed: bool,
 }
 
-impl AgentRuntimeSupervisor {
-    /// Construct the real backend. `driver` launches the agent-runtime supervisor.
+impl SubprocessEngine {
+    /// Construct the subprocess backend. `driver` is the binary launched with the
+    /// manifest; it must emit improved artifact content as JSON `{ "content": "..." }`
+    /// on stdout.
     #[must_use]
     pub fn new(
         researcher: impl Into<String>,
         driver: impl Into<String>,
-        manifest: AgentRuntimeManifest,
+        manifest: SubprocessManifest,
     ) -> Self {
         Self {
             researcher: researcher.into(),
@@ -355,7 +358,7 @@ impl AgentRuntimeSupervisor {
         }
     }
 
-    /// Pin the supervisor to a TEE-isolated worker (sealed isolation).
+    /// Pin the subprocess to a TEE-isolated worker (sealed isolation).
     #[must_use]
     pub fn with_tee(mut self) -> Self {
         self.sealed = true;
@@ -369,11 +372,11 @@ impl AgentRuntimeSupervisor {
     }
 }
 
-impl Engine for AgentRuntimeSupervisor {
+impl Engine for SubprocessEngine {
     type Artifact = GenericArtifact;
 
     fn id(&self) -> &str {
-        "rsi-supervisor-agent-runtime"
+        "subprocess-engine"
     }
 
     fn produce(
@@ -381,25 +384,25 @@ impl Engine for AgentRuntimeSupervisor {
         _ctx: &EngineContext,
     ) -> impl Future<Output = Result<Self::Artifact, EngineError>> + Send {
         let manifest = self.manifest.clone();
-        #[cfg(feature = "agent-runtime")]
+        #[cfg(feature = "subprocess-backend")]
         let driver = self.driver.clone();
         async move {
             let manifest_json = serde_json::to_string(&manifest)
                 .map_err(|e| EngineError::Backend(format!("manifest serialization: {e}")))?;
 
-            #[cfg(feature = "agent-runtime")]
+            #[cfg(feature = "subprocess-backend")]
             {
-                // Drive the agent-runtime RSI supervisor: pass the manifest, read back
-                // the improved artifact content on stdout as JSON `{ "content": "..." }`.
+                // Spawn the external driver with the manifest; read back the improved
+                // artifact content on stdout as JSON `{ "content": "..." }`.
                 let out = tokio::process::Command::new(&driver)
                     .arg("--manifest")
                     .arg(&manifest_json)
                     .output()
                     .await
-                    .map_err(|e| EngineError::Backend(format!("agent-runtime spawn: {e}")))?;
+                    .map_err(|e| EngineError::Backend(format!("subprocess driver spawn: {e}")))?;
                 if !out.status.success() {
                     return Err(EngineError::Backend(format!(
-                        "agent-runtime exited {}: {}",
+                        "subprocess driver exited {}: {}",
                         out.status,
                         String::from_utf8_lossy(&out.stderr)
                     )));
@@ -408,11 +411,11 @@ impl Engine for AgentRuntimeSupervisor {
                 Ok(GenericArtifact::new(manifest.kind, Vec::new(), improved))
             }
 
-            #[cfg(not(feature = "agent-runtime"))]
+            #[cfg(not(feature = "subprocess-backend"))]
             {
                 let _ = manifest_json;
                 Err(EngineError::Backend(
-                    "agent-runtime feature not enabled: needs Node + @tangle-network/agent-runtime + model credentials".into(),
+                    "subprocess-backend feature not enabled: supply a driver binary to run the external process".into(),
                 ))
             }
         }
@@ -423,16 +426,16 @@ impl Engine for AgentRuntimeSupervisor {
     }
 }
 
-/// Extract the improved artifact `content` from the supervisor's JSON stdout. Behind
-/// the feature because only the real path parses it.
-#[cfg(feature = "agent-runtime")]
+/// Extract the improved artifact `content` from the driver's JSON stdout. Behind the
+/// feature because only the subprocess path parses it.
+#[cfg(feature = "subprocess-backend")]
 fn parse_runtime_output(stdout: &[u8]) -> Result<String, EngineError> {
     #[derive(Deserialize)]
     struct Out {
         content: String,
     }
     let out: Out = serde_json::from_slice(stdout)
-        .map_err(|e| EngineError::Backend(format!("agent-runtime output parse: {e}")))?;
+        .map_err(|e| EngineError::Backend(format!("subprocess driver output parse: {e}")))?;
     Ok(out.content)
 }
 
@@ -541,18 +544,19 @@ mod tests {
         );
     }
 
+    #[cfg(not(feature = "subprocess-backend"))]
     #[tokio::test]
-    async fn agent_runtime_backend_without_feature_reports_missing() {
-        let manifest = AgentRuntimeManifest {
+    async fn subprocess_backend_without_feature_reports_missing() {
+        let manifest = SubprocessManifest {
             kind: ArtifactKind::Program,
             baseline_content: "fn main() {}".into(),
             budget_steps: 10,
             dev_eval_cmd: None,
         };
-        let engine = AgentRuntimeSupervisor::new("r", "node", manifest);
+        let engine = SubprocessEngine::new("r", "node", manifest);
         let err = engine.produce(&ctx()).await.unwrap_err();
         match err {
-            EngineError::Backend(m) => assert!(m.contains("agent-runtime feature not enabled")),
+            EngineError::Backend(m) => assert!(m.contains("subprocess-backend feature not enabled")),
             other => panic!("expected Backend error, got {other:?}"),
         }
     }

@@ -1,6 +1,6 @@
 //! The three non-`HeldOutEval` scorer kinds and the black-box optimizer engine —
 //! the M5 instantiations of [`autoresearch_runtime::ScorerKind`] beyond the
-//! Improvement-Plane replay scorer of [`crate::config_opt`].
+//! agent-profile replay scorer of [`crate::config_opt`].
 //!
 //! The centerpiece is **Scenario A — the private-oracle (quantum) case**
 //! ([`PrivateOracleScorer`] + [`BlackBoxOptimizerEngine`]): researchers are scored
@@ -797,9 +797,9 @@ impl Scorer for HumanPanelScorer {
 /// the constructing kind in the unit tests).
 ///
 /// The [`ScorerKind::HeldOutEval`] arm reuses [`crate::config_opt::LinearScorer`] (the
-/// M1 Improvement-Plane stand-in), so all four kinds are reachable through one type.
+/// M1 agent-profile stand-in), so all four kinds are reachable through one type.
 pub enum KindDispatchScorer {
-    /// Held-out replay eval (the M1 Improvement-Plane stand-in).
+    /// Held-out replay eval (the M1 agent-profile stand-in).
     HeldOutEval(crate::config_opt::LinearScorer),
     /// The hidden-reference private oracle (Scenario A — the quantum case).
     PrivateOracle(PrivateOracleScorer),

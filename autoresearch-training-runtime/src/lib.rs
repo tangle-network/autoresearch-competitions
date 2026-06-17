@@ -1,44 +1,42 @@
-//! # autoresearch-training-runtime — the REAL distributed-training compute
+//! # autoresearch-training-runtime — external-process training-cluster adapters
 //!
-//! Implements [`autoresearch_verticals::TrainingCluster`] against the two open
-//! distributed-training frameworks the market targets:
+//! Implements [`autoresearch_verticals::TrainingCluster`] against caller-supplied
+//! external execution paths:
 //!
-//! - **prime** (Prime Intellect, MIT) — DiLoCo/DeMo over a loosely-coupled,
-//!   internet-scale worker pool. [`PrimeCluster`].
-//! - **Psyche** (Nous Research, Apache-2.0) — the same communication-efficient
-//!   training submitted as a Tangle training-blueprint service-instance job whose
-//!   own m-of-n operators run the multi-node training. [`PsycheCluster`].
+//! - **Subprocess backend** — shells out to a local training binary (e.g. a
+//!   DiLoCo/DeMo-style trainer on `$PATH`) with a JSON config. [`SubprocessTrainingCluster`].
+//! - **Service backend** — submits a training job to a caller-supplied service
+//!   instance/client. [`ServiceTrainingCluster`].
 //!
-//! This is the production swap for the in-repo
+//! These are the production swap for the in-repo
 //! [`autoresearch_verticals::LocalSimCluster`] (a closed-form simulation). Each
-//! cluster here maps a [`TrainingRecipe`] onto the framework's *real* run config,
-//! launches the run, and parses the resulting checkpoint into a
-//! [`TrainedArtifact`]. Delegating the compute never delegates the trust: the
-//! cluster's self-reported `train_loss` is only a provenance/dev signal — the
-//! market's Referee re-scores the artifact on a held-out split
-//! ([`autoresearch_verticals::DistributedTrainingScorer`]) and that re-score, not
-//! this number, decides payment.
+//! cluster here maps a [`TrainingRecipe`] onto an external run config, launches the
+//! run, and parses the resulting checkpoint into a [`TrainedArtifact`]. Delegating
+//! the compute never delegates the trust: the cluster's self-reported `train_loss`
+//! is only a provenance/dev signal — the market's Referee re-scores the artifact on
+//! a held-out split ([`autoresearch_verticals::DistributedTrainingScorer`]) and that
+//! re-score, not this number, decides payment.
 //!
 //! ## Why the execution path is feature-gated
 //!
-//! The config *mapping* ([`recipe_to_prime_config`], [`recipe_to_psyche_config`])
-//! and the trait surface are pure: no GPUs, no clock, no I/O, fully unit-testable,
-//! and compiled by the default `cargo build`. The *execution* path — launching
-//! `prime` / submitting the Psyche job and parsing a checkpoint — is gated behind
-//! `prime-backend` / `psyche-backend`. With the feature **off**, `train()` returns
-//! [`EngineError::Backend`] naming exactly what is missing, so the default build
-//! stays a thin, fast shell and CI never needs a GPU. This mirrors
-//! `autoresearch-sandbox-runtime`'s feature-gated real backend.
+//! The config *mapping* ([`recipe_to_subprocess_config`],
+//! [`recipe_to_service_config`]) and the trait surface are pure: no GPUs, no clock,
+//! no I/O, fully unit-testable, and compiled by the default `cargo build`. The
+//! *execution* path — launching the subprocess / submitting the service job and
+//! parsing a checkpoint — is gated behind `subprocess-backend` / `service-backend`.
+//! With the feature **off**, `train()` returns [`EngineError::Backend`] naming
+//! exactly what is missing, so the default build stays a thin, fast shell and CI
+//! never needs a GPU.
 //!
 //! ## Honest compile status (do NOT claim this trains)
 //!
 //! The gated bodies build the real invocation — a real `std::process::Command` for
-//! `prime`, a real job-spec JSON for Psyche — against the frameworks' documented
-//! CLIs/config shapes. They are NOT stubs. But whether a *run* actually executes
-//! depends on the framework being installed, a GPU pool being reachable, and (for
-//! Psyche) an operator cluster accepting the job — none of which exists in CI. The
-//! gate the feature unlocks is "construct + launch + parse"; "a model converged" is
-//! proven only by the held-out re-score on real hardware, never by this crate.
+//! the subprocess backend, a real job-spec JSON for the service backend — against
+//! documented CLIs/config shapes. They are NOT stubs. But whether a *run* actually
+//! executes depends on the caller supplying the external binary/service, a GPU pool
+//! being reachable, etc. — none of which exists in CI. The gate the feature unlocks
+//! is "construct + launch + parse"; "a model converged" is proven only by the
+//! held-out re-score on real hardware, never by this crate.
 
 #![forbid(unsafe_code)]
 
@@ -50,78 +48,79 @@ use autoresearch_verticals::distributed_training::{
 };
 use serde::{Deserialize, Serialize};
 
-// --- prime (Prime Intellect, MIT) run config --------------------------------
+// --- Subprocess training run config -----------------------------------------
 //
-// A serde-serializable mirror of a real `prime` / DiLoCo run config: enough of the
-// shape that `serde_json::to_string` produces a config a `prime` invocation would
-// accept, and that the recipe knobs land on the fields they actually control. The
-// model/data fields carry sane defaults so a recipe alone fully specifies a run.
+// A serde-serializable run config shaped like a DiLoCo/DeMo-style distributed
+// training invocation: enough of the shape that `serde_json::to_string` produces a
+// config an external trainer invocation would accept, and that the recipe knobs land
+// on the fields they actually control. The model/data fields carry sane defaults so
+// a recipe alone fully specifies a run.
 
-/// DiLoCo block of a [`PrimeConfig`]: the cross-island sync schedule and the outer
+/// DiLoCo block of a [`SubprocessConfig`]: the cross-island sync schedule and the outer
 /// (Nesterov) optimizer the islands are synced with.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-pub struct PrimeDiLoCo {
+pub struct SubprocessDiLoCo {
     /// Inner SGD steps `H` each island runs locally between cross-island outer syncs.
     pub inner_steps: u32,
     /// DiLoCo outer (Nesterov) learning rate the outer optimizer syncs islands with.
     pub outer_lr: f64,
 }
 
-/// Inner-optimizer block of a [`PrimeConfig`].
+/// Inner-optimizer block of a [`SubprocessConfig`].
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-pub struct PrimeOptimizer {
+pub struct SubprocessOptimizer {
     /// Inner (local) learning rate each island's local SGD runs at.
     pub lr: f64,
 }
 
-/// DeMo gradient-compression block of a [`PrimeConfig`].
+/// DeMo gradient-compression block of a [`SubprocessConfig`].
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-pub struct PrimeCompression {
+pub struct SubprocessCompression {
     /// Kept-gradient fraction in `(0, 1]` (1.0 = no compression; DeMo top-k below).
     pub keep_fraction: f64,
 }
 
-/// Model block of a [`PrimeConfig`] — the fixed-budget target the recipe trains.
+/// Model block of a [`SubprocessConfig`] — the fixed-budget target the recipe trains.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct PrimeModel {
+pub struct SubprocessModel {
     /// HF-style model identifier the run trains.
     pub name: String,
     /// Sequence length tokens are packed to.
     pub seq_len: u32,
 }
 
-/// Data block of a [`PrimeConfig`].
+/// Data block of a [`SubprocessConfig`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct PrimeData {
+pub struct SubprocessData {
     /// Dataset identifier the run streams.
     pub dataset: String,
     /// Per-island micro-batch size.
     pub micro_batch_size: u32,
 }
 
-/// A complete `prime` / DiLoCo run config. Built purely from a [`TrainingRecipe`]
-/// by [`recipe_to_prime_config`]; serialized to the JSON a `prime` invocation
+/// A complete subprocess training run config. Built purely from a [`TrainingRecipe`]
+/// by [`recipe_to_subprocess_config`]; serialized to the JSON an external trainer
 /// consumes by the gated execution path.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct PrimeConfig {
+pub struct SubprocessConfig {
     /// Data-parallel replicas — one per DiLoCo island (recipe `islands`).
     pub num_replicas: u32,
     /// DiLoCo cross-island sync schedule + outer LR.
-    pub diloco: PrimeDiLoCo,
+    pub diloco: SubprocessDiLoCo,
     /// Inner (local) optimizer.
-    pub optimizer: PrimeOptimizer,
+    pub optimizer: SubprocessOptimizer,
     /// DeMo gradient compression.
-    pub compression: PrimeCompression,
+    pub compression: SubprocessCompression,
     /// Fixed model target (default).
-    pub model: PrimeModel,
+    pub model: SubprocessModel,
     /// Fixed data source (default).
-    pub data: PrimeData,
+    pub data: SubprocessData,
 }
 
-/// Map a market [`TrainingRecipe`] onto a real `prime` run config. PURE and fully
-/// unit-testable — the field correspondence is the contract:
+/// Map a market [`TrainingRecipe`] onto a subprocess training run config. PURE and
+/// fully unit-testable — the field correspondence is the contract:
 ///
-/// | recipe                | prime config                |
+/// | recipe                | subprocess config           |
 /// |-----------------------|-----------------------------|
 /// | `islands`             | `num_replicas`              |
 /// | `inner_steps`         | `diloco.inner_steps`        |
@@ -131,41 +130,41 @@ pub struct PrimeConfig {
 ///
 /// Model/data fields take sane defaults so a recipe alone specifies a run.
 #[must_use]
-pub fn recipe_to_prime_config(recipe: &TrainingRecipe) -> PrimeConfig {
-    PrimeConfig {
+pub fn recipe_to_subprocess_config(recipe: &TrainingRecipe) -> SubprocessConfig {
+    SubprocessConfig {
         num_replicas: recipe.islands,
-        diloco: PrimeDiLoCo {
+        diloco: SubprocessDiLoCo {
             inner_steps: recipe.inner_steps,
             outer_lr: recipe.outer_lr,
         },
-        optimizer: PrimeOptimizer {
+        optimizer: SubprocessOptimizer {
             lr: recipe.inner_lr,
         },
-        compression: PrimeCompression {
+        compression: SubprocessCompression {
             keep_fraction: recipe.keep_fraction,
         },
-        model: PrimeModel {
+        model: SubprocessModel {
             name: "meta-llama/Llama-3.2-1B".to_string(),
             seq_len: 2048,
         },
-        data: PrimeData {
+        data: SubprocessData {
             dataset: "HuggingFaceFW/fineweb-edu".to_string(),
             micro_batch_size: 16,
         },
     }
 }
 
-// --- Psyche (Nous Research, Apache-2.0) job config --------------------------
+// --- Service-instance training job config -----------------------------------
 //
-// Psyche runs the same communication-efficient training, but the market reaches it
-// by submitting a job to a Tangle training-blueprint service instance whose own
-// m-of-n operators execute the multi-node run. The config below is the job-spec the
-// service instance consumes; the recipe maps onto it one-to-one with the prime case.
+// The service backend reaches the same communication-efficient training regime by
+// submitting a job to a training-blueprint service instance whose own m-of-n
+// operators execute the multi-node run. The config below is the job-spec the service
+// consumes; the recipe maps onto it one-to-one with the subprocess case.
 
-/// DisTrO/DiLoCo block of a [`PsycheConfig`] — Psyche's distributed-optimizer
-/// schedule, the analogue of prime's `diloco` block.
+/// DisTrO/DiLoCo block of a [`ServiceConfig`] — the service backend's
+/// distributed-optimizer schedule, the analogue of the subprocess `diloco` block.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-pub struct PsycheDistro {
+pub struct ServiceDistro {
     /// Local steps between distributed-optimizer rounds (recipe `inner_steps`).
     pub inner_steps: u32,
     /// Outer learning rate the rounds are aggregated with (recipe `outer_lr`).
@@ -174,34 +173,34 @@ pub struct PsycheDistro {
     pub keep_fraction: f64,
 }
 
-/// A Psyche training-blueprint job spec, built from a [`TrainingRecipe`] by
-/// [`recipe_to_psyche_config`] and submitted as a service-instance job by the gated
+/// A service-instance training job spec, built from a [`TrainingRecipe`] by
+/// [`recipe_to_service_config`] and submitted as a service job by the gated
 /// execution path.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct PsycheConfig {
-    /// Number of training clients — Psyche's analogue of prime's islands.
+pub struct ServiceConfig {
+    /// Number of training clients — the service backend's analogue of subprocess islands.
     pub num_clients: u32,
     /// Inner (local) learning rate.
     pub lr: f64,
     /// DisTrO distributed-optimizer schedule + compression.
-    pub distro: PsycheDistro,
+    pub distro: ServiceDistro,
     /// HF-style model identifier the run trains (default).
     pub model: String,
     /// Dataset identifier the run streams (default).
     pub dataset: String,
 }
 
-/// Map a market [`TrainingRecipe`] onto a Psyche job spec. PURE and fully
-/// unit-testable; the field correspondence mirrors [`recipe_to_prime_config`]:
+/// Map a market [`TrainingRecipe`] onto a service-instance job spec. PURE and fully
+/// unit-testable; the field correspondence mirrors [`recipe_to_subprocess_config`]:
 /// `islands -> num_clients`, `inner_steps -> distro.inner_steps`,
 /// `inner_lr -> lr`, `outer_lr -> distro.outer_lr`,
 /// `keep_fraction -> distro.keep_fraction`.
 #[must_use]
-pub fn recipe_to_psyche_config(recipe: &TrainingRecipe) -> PsycheConfig {
-    PsycheConfig {
+pub fn recipe_to_service_config(recipe: &TrainingRecipe) -> ServiceConfig {
+    ServiceConfig {
         num_clients: recipe.islands,
         lr: recipe.inner_lr,
-        distro: PsycheDistro {
+        distro: ServiceDistro {
             inner_steps: recipe.inner_steps,
             outer_lr: recipe.outer_lr,
             keep_fraction: recipe.keep_fraction,
@@ -211,34 +210,36 @@ pub fn recipe_to_psyche_config(recipe: &TrainingRecipe) -> PsycheConfig {
     }
 }
 
-// --- PrimeCluster -----------------------------------------------------------
+// --- SubprocessTrainingCluster -----------------------------------------------------------
 
-/// The real `prime` (Prime Intellect, MIT) backend for [`TrainingCluster`].
+/// The subprocess backend for [`TrainingCluster`].
 ///
 /// `train()` always builds the run config purely (so the mapping is exercised even
-/// without the feature). Behind `prime-backend` it then launches the run and parses
-/// the checkpoint; without the feature it returns [`EngineError::Backend`] naming
-/// what is missing. `tee` records whether the run is pinned to a confidential-compute
-/// (TEE) worker pool, which is what [`TrainingCluster::provides_sealed_isolation`]
-/// reports for the private-competition tier.
+/// without the feature). Behind `subprocess-backend` it then launches the run and
+/// parses the checkpoint; without the feature it returns [`EngineError::Backend`]
+/// naming what is missing. `tee` records whether the run is pinned to a
+/// confidential-compute (TEE) worker pool, which is what
+/// [`TrainingCluster::provides_sealed_isolation`] reports for the
+/// private-competition tier.
 ///
-/// [`PrimeCluster::new`] (and the equivalent `Default`) invoke `prime` from `$PATH`
-/// with no TEE pinning; set the `binary` field or chain [`PrimeCluster::with_tee`]
-/// to adjust.
+/// [`SubprocessTrainingCluster::new`] (and the equivalent `Default`) invoke the
+/// external binary from `$PATH` with no TEE pinning; set the `binary` field or chain
+/// [`SubprocessTrainingCluster::with_tee`] to adjust.
 #[derive(Clone, Debug)]
-pub struct PrimeCluster {
-    /// `prime` binary to invoke (e.g. `"prime"` on `$PATH`, or an absolute path).
+pub struct SubprocessTrainingCluster {
+    /// External training binary to invoke (e.g. a DiLoCo/DeMo trainer on `$PATH`,
+    /// or an absolute path).
     pub binary: String,
     /// Whether the run is pinned to a TEE-isolated worker pool (sealed isolation).
     pub tee: bool,
 }
 
-impl PrimeCluster {
-    /// A cluster invoking `prime` from `$PATH`, no TEE pinning.
+impl SubprocessTrainingCluster {
+    /// A cluster invoking the external binary from `$PATH`, no TEE pinning.
     #[must_use]
     pub fn new() -> Self {
         Self {
-            binary: "prime".to_string(),
+            binary: "trainer".to_string(),
             tee: false,
         }
     }
@@ -252,15 +253,15 @@ impl PrimeCluster {
     }
 }
 
-impl Default for PrimeCluster {
+impl Default for SubprocessTrainingCluster {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl TrainingCluster for PrimeCluster {
+impl TrainingCluster for SubprocessTrainingCluster {
     fn id(&self) -> &str {
-        "prime-cluster"
+        "subprocess-training-cluster"
     }
 
     fn train(
@@ -271,12 +272,12 @@ impl TrainingCluster for PrimeCluster {
         // Pure regardless of the feature: build the config and serialize it. A
         // serialization failure here is a real `Backend` error, not a panic.
         let recipe = *recipe;
-        let config = recipe_to_prime_config(&recipe);
+        let config = recipe_to_subprocess_config(&recipe);
         let binary = self.binary.clone();
         async move {
             let config_json = serde_json::to_string(&config)
-                .map_err(|e| EngineError::Backend(format!("prime config serialization: {e}")))?;
-            prime_train(&binary, &recipe, seed, &config_json).await
+                .map_err(|e| EngineError::Backend(format!("subprocess config serialization: {e}")))?;
+            subprocess_train(&binary, &recipe, seed, &config_json).await
         }
     }
 
@@ -285,11 +286,11 @@ impl TrainingCluster for PrimeCluster {
     }
 }
 
-/// Launch a `prime` run for `config_json` and parse its checkpoint. With
-/// `prime-backend` this builds and spawns the real invocation; without it, the run
-/// cannot execute and we say exactly why.
-#[cfg(feature = "prime-backend")]
-async fn prime_train(
+/// Launch the external training binary for `config_json` and parse its checkpoint.
+/// With `subprocess-backend` this builds and spawns the real invocation; without it,
+/// the run cannot execute and we say exactly why.
+#[cfg(feature = "subprocess-backend")]
+async fn subprocess_train(
     binary: &str,
     recipe: &TrainingRecipe,
     seed: u64,
@@ -297,8 +298,8 @@ async fn prime_train(
 ) -> Result<TrainedArtifact, EngineError> {
     use tokio::process::Command;
 
-    // Real invocation: `prime train --config <json> --seed <seed>`. `prime` reads
-    // the DiLoCo/DeMo run config from `--config` and trains the multi-node run.
+    // Real invocation: `<binary> train --config <json> --seed <seed>`. The external
+    // trainer reads the DiLoCo/DeMo run config from `--config` and runs the job.
     let output = Command::new(binary)
         .arg("train")
         .arg("--config")
@@ -309,20 +310,20 @@ async fn prime_train(
         .await
         .map_err(|e| {
             EngineError::Backend(format!(
-                "prime launch failed (is `{binary}` installed + GPUs present?): {e}"
+                "subprocess training launch failed (is `{binary}` installed + GPUs present?): {e}"
             ))
         })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(EngineError::Backend(format!(
-            "prime run exited {}: {stderr}",
+            "subprocess training run exited {}: {stderr}",
             output.status
         )));
     }
 
-    // `prime` prints the final-checkpoint summary as JSON on stdout; we trust only
-    // the structural parse here — the held-out re-score, not this loss, pays.
+    // The external trainer prints the final-checkpoint summary as JSON on stdout; we
+    // trust only the structural parse here — the held-out re-score, not this loss, pays.
     let stdout = String::from_utf8_lossy(&output.stdout);
     let train_loss = parse_checkpoint_loss(&stdout)?;
     Ok(TrainedArtifact {
@@ -333,33 +334,33 @@ async fn prime_train(
 }
 
 /// Feature-off path: the config is built and serialized, but no run can execute.
-#[cfg(not(feature = "prime-backend"))]
-async fn prime_train(
+#[cfg(not(feature = "subprocess-backend"))]
+async fn subprocess_train(
     _binary: &str,
     _recipe: &TrainingRecipe,
     _seed: u64,
     _config_json: &str,
 ) -> Result<TrainedArtifact, EngineError> {
     Err(EngineError::Backend(
-        "prime-backend feature not enabled: needs prime + GPUs".to_string(),
+        "subprocess-backend feature not enabled: needs external training binary + GPUs".to_string(),
     ))
 }
 
-// --- PsycheCluster ----------------------------------------------------------
+// --- ServiceTrainingCluster ----------------------------------------------------------
 
-/// The real Psyche (Nous Research, Apache-2.0) backend for [`TrainingCluster`].
+/// The service-instance backend for [`TrainingCluster`].
 ///
-/// Reaches Psyche by submitting the recipe as a job to a Tangle training-blueprint
-/// service instance whose own m-of-n operators run the multi-node training. Like
-/// [`PrimeCluster`], the config is always built purely; behind `psyche-backend` the
-/// job is submitted and its checkpoint parsed, and without the feature `train()`
-/// returns [`EngineError::Backend`].
+/// Submits the recipe as a job to a caller-supplied training service instance whose
+/// own m-of-n operators run the multi-node training. Like
+/// [`SubprocessTrainingCluster`], the config is always built purely; behind
+/// `service-backend` the job is submitted and its checkpoint parsed, and without the
+/// feature `train()` returns [`EngineError::Backend`].
 ///
-/// Construct via [`PsycheCluster::new`] (not `Default`): a Psyche cluster is
-/// meaningless without a target `service_instance`, so it is always supplied.
+/// Construct via [`ServiceTrainingCluster::new`] (not `Default`): a service backend
+/// is meaningless without a target `service_instance`, so it is always supplied.
 #[derive(Clone, Debug)]
-pub struct PsycheCluster {
-    /// `psyche` client binary used to submit the service-instance job.
+pub struct ServiceTrainingCluster {
+    /// External client binary used to submit the service-instance job.
     pub client: String,
     /// Tangle service instance id the training job is submitted to.
     pub service_instance: u64,
@@ -367,12 +368,12 @@ pub struct PsycheCluster {
     pub tee: bool,
 }
 
-impl PsycheCluster {
-    /// A client targeting `service_instance`, invoking `psyche` from `$PATH`.
+impl ServiceTrainingCluster {
+    /// A client targeting `service_instance`, invoking the external client from `$PATH`.
     #[must_use]
     pub fn new(service_instance: u64) -> Self {
         Self {
-            client: "psyche".to_string(),
+            client: "training-client".to_string(),
             service_instance,
             tee: false,
         }
@@ -387,9 +388,9 @@ impl PsycheCluster {
     }
 }
 
-impl TrainingCluster for PsycheCluster {
+impl TrainingCluster for ServiceTrainingCluster {
     fn id(&self) -> &str {
-        "psyche-cluster"
+        "service-training-cluster"
     }
 
     fn train(
@@ -398,13 +399,13 @@ impl TrainingCluster for PsycheCluster {
         seed: u64,
     ) -> impl Future<Output = Result<TrainedArtifact, EngineError>> + Send {
         let recipe = *recipe;
-        let config = recipe_to_psyche_config(&recipe);
+        let config = recipe_to_service_config(&recipe);
         let client = self.client.clone();
         let service_instance = self.service_instance;
         async move {
             let config_json = serde_json::to_string(&config)
-                .map_err(|e| EngineError::Backend(format!("psyche config serialization: {e}")))?;
-            psyche_train(&client, service_instance, &recipe, seed, &config_json).await
+                .map_err(|e| EngineError::Backend(format!("service config serialization: {e}")))?;
+            service_train(&client, service_instance, &recipe, seed, &config_json).await
         }
     }
 
@@ -413,12 +414,12 @@ impl TrainingCluster for PsycheCluster {
     }
 }
 
-/// Submit a Psyche training job for `config_json` to `service_instance` and parse
-/// the returned checkpoint. With `psyche-backend` this builds and spawns the real
-/// job-submission invocation; without it, the job cannot be submitted and we say
-/// exactly why.
-#[cfg(feature = "psyche-backend")]
-async fn psyche_train(
+/// Submit a service-instance training job for `config_json` to `service_instance`
+/// and parse the returned checkpoint. With `service-backend` this builds and spawns
+/// the real job-submission invocation; without it, the job cannot be submitted and
+/// we say exactly why.
+#[cfg(feature = "service-backend")]
+async fn service_train(
     client: &str,
     service_instance: u64,
     recipe: &TrainingRecipe,
@@ -427,8 +428,8 @@ async fn psyche_train(
 ) -> Result<TrainedArtifact, EngineError> {
     use tokio::process::Command;
 
-    // Real invocation: submit the job spec to the training-blueprint service
-    // instance via the psyche client; its m-of-n operators run the training.
+    // Real invocation: submit the job spec to the training service instance via the
+    // external client; its m-of-n operators run the training.
     let output = Command::new(client)
         .arg("submit-job")
         .arg("--service-instance")
@@ -441,14 +442,14 @@ async fn psyche_train(
         .await
         .map_err(|e| {
             EngineError::Backend(format!(
-                "psyche job submission failed (is `{client}` installed + operators reachable?): {e}"
+                "service job submission failed (is `{client}` installed + operators reachable?): {e}"
             ))
         })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(EngineError::Backend(format!(
-            "psyche job exited {}: {stderr}",
+            "service job exited {}: {stderr}",
             output.status
         )));
     }
@@ -463,8 +464,8 @@ async fn psyche_train(
 }
 
 /// Feature-off path: the job spec is built and serialized, but cannot be submitted.
-#[cfg(not(feature = "psyche-backend"))]
-async fn psyche_train(
+#[cfg(not(feature = "service-backend"))]
+async fn service_train(
     _client: &str,
     _service_instance: u64,
     _recipe: &TrainingRecipe,
@@ -472,14 +473,14 @@ async fn psyche_train(
     _config_json: &str,
 ) -> Result<TrainedArtifact, EngineError> {
     Err(EngineError::Backend(
-        "psyche-backend feature not enabled: needs psyche client + operator cluster".to_string(),
+        "service-backend feature not enabled: needs external service client + operator cluster".to_string(),
     ))
 }
 
 /// Parse the final training loss from a framework's checkpoint-summary JSON. Used by
 /// both gated paths: the framework prints `{"train_loss": <f64>, ...}` for the final
 /// checkpoint; we extract it structurally. Only compiled when a backend is enabled.
-#[cfg(any(feature = "prime-backend", feature = "psyche-backend"))]
+#[cfg(any(feature = "subprocess-backend", feature = "service-backend"))]
 fn parse_checkpoint_loss(stdout: &str) -> Result<f64, EngineError> {
     let summary: serde_json::Value = serde_json::from_str(stdout.trim())
         .map_err(|e| EngineError::Backend(format!("checkpoint summary was not JSON: {e}")))?;
@@ -507,9 +508,9 @@ mod tests {
     }
 
     #[test]
-    fn prime_config_maps_every_recipe_knob() {
+    fn subprocess_config_maps_every_recipe_knob() {
         let r = recipe();
-        let c = recipe_to_prime_config(&r);
+        let c = recipe_to_subprocess_config(&r);
         assert_eq!(c.num_replicas, r.islands, "islands -> num_replicas");
         assert_eq!(
             c.diloco.inner_steps, r.inner_steps,
@@ -524,9 +525,9 @@ mod tests {
     }
 
     #[test]
-    fn psyche_config_maps_every_recipe_knob() {
+    fn service_config_maps_every_recipe_knob() {
         let r = recipe();
-        let c = recipe_to_psyche_config(&r);
+        let c = recipe_to_service_config(&r);
         assert_eq!(c.num_clients, r.islands, "islands -> num_clients");
         assert_eq!(
             c.distro.inner_steps, r.inner_steps,
@@ -541,26 +542,26 @@ mod tests {
     }
 
     #[test]
-    fn prime_config_serde_round_trips() {
-        let c = recipe_to_prime_config(&recipe());
+    fn subprocess_config_serde_round_trips() {
+        let c = recipe_to_subprocess_config(&recipe());
         let json = serde_json::to_string(&c).expect("serialize");
-        let back: PrimeConfig = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(c, back, "prime config must survive a serde round-trip");
+        let back: SubprocessConfig = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(c, back, "subprocess config must survive a serde round-trip");
     }
 
     #[test]
-    fn psyche_config_serde_round_trips() {
-        let c = recipe_to_psyche_config(&recipe());
+    fn service_config_serde_round_trips() {
+        let c = recipe_to_service_config(&recipe());
         let json = serde_json::to_string(&c).expect("serialize");
-        let back: PsycheConfig = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(c, back, "psyche config must survive a serde round-trip");
+        let back: ServiceConfig = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(c, back, "service config must survive a serde round-trip");
     }
 
     #[test]
     fn baseline_recipe_maps_cleanly() {
         // The reference recipe is a single fully-synchronous, uncompressed replica.
         let base = TrainingRecipe::baseline();
-        let c = recipe_to_prime_config(&base);
+        let c = recipe_to_subprocess_config(&base);
         assert_eq!(c.num_replicas, 1);
         assert_eq!(c.diloco.inner_steps, 1);
         assert!((c.compression.keep_fraction - 1.0).abs() < f64::EPSILON);
@@ -570,34 +571,34 @@ mod tests {
     // the default build (features off); with a feature on, the body instead launches
     // the real framework, which has no binary/operators in CI — so the assertion is
     // gated to the default build, exactly where it is meaningful.
-    #[cfg(not(feature = "prime-backend"))]
+    #[cfg(not(feature = "subprocess-backend"))]
     #[tokio::test]
-    async fn prime_train_without_feature_reports_missing_backend() {
-        let cluster = PrimeCluster::new();
+    async fn subprocess_train_without_feature_reports_missing_backend() {
+        let cluster = SubprocessTrainingCluster::new();
         let err = cluster
             .train(&recipe(), 7)
             .await
-            .expect_err("must error without prime-backend");
+            .expect_err("must error without subprocess-backend");
         match err {
             EngineError::Backend(msg) => assert!(
-                msg.contains("prime-backend feature not enabled"),
+                msg.contains("subprocess-backend feature not enabled"),
                 "error must name the missing feature: {msg}"
             ),
             other => panic!("expected Backend error, got {other:?}"),
         }
     }
 
-    #[cfg(not(feature = "psyche-backend"))]
+    #[cfg(not(feature = "service-backend"))]
     #[tokio::test]
-    async fn psyche_train_without_feature_reports_missing_backend() {
-        let cluster = PsycheCluster::new(42);
+    async fn service_train_without_feature_reports_missing_backend() {
+        let cluster = ServiceTrainingCluster::new(42);
         let err = cluster
             .train(&recipe(), 7)
             .await
-            .expect_err("must error without psyche-backend");
+            .expect_err("must error without service-backend");
         match err {
             EngineError::Backend(msg) => assert!(
-                msg.contains("psyche-backend feature not enabled"),
+                msg.contains("service-backend feature not enabled"),
                 "error must name the missing feature: {msg}"
             ),
             other => panic!("expected Backend error, got {other:?}"),
@@ -607,14 +608,14 @@ mod tests {
     #[test]
     fn sealed_isolation_tracks_the_tee_flag() {
         assert!(
-            !PrimeCluster::new().provides_sealed_isolation(),
+            !SubprocessTrainingCluster::new().provides_sealed_isolation(),
             "no TEE => not sealed"
         );
         assert!(
-            PrimeCluster::new().with_tee().provides_sealed_isolation(),
+            SubprocessTrainingCluster::new().with_tee().provides_sealed_isolation(),
             "TEE flag => sealed"
         );
-        assert!(!PsycheCluster::new(1).provides_sealed_isolation());
-        assert!(PsycheCluster::new(1).with_tee().provides_sealed_isolation());
+        assert!(!ServiceTrainingCluster::new(1).provides_sealed_isolation());
+        assert!(ServiceTrainingCluster::new(1).with_tee().provides_sealed_isolation());
     }
 }

@@ -15,11 +15,11 @@
 //! (`se_delta = sqrt(se_c^2 + se_b^2)`). That is correct but conservative — it
 //! ignores the per-task correlation between baseline and candidate runs.
 //!
-//! The production refinement is **paired replay** (Improvement-Plane "Tier B"):
-//! score baseline and candidate on the *same* held-out tasks and form per-task
-//! differences, which cancels task-difficulty variance and tightens the CI
-//! substantially. The orchestrator's seams are identical; only this function is
-//! swapped for the paired estimator when paired evidence is available.
+//! A production refinement is **paired replay**: score baseline and candidate on
+//! the *same* held-out tasks and form per-task differences, which cancels
+//! task-difficulty variance and tightens the CI substantially. The orchestrator's
+//! seams are identical; only this function is swapped for the paired estimator when
+//! paired evidence is available.
 
 use autoresearch_runtime::types::{Lift, Measurement};
 

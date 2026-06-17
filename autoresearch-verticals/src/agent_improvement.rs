@@ -1,11 +1,11 @@
-//! Agent self-improvement vertical: the autoresearch market drives the
-//! **Improvement-Plane** competition — the flagship recursive-self-improvement (RSI)
-//! loop shape of `@tangle-network/agent-eval`.
+//! Agent self-improvement vertical: the autoresearch market drives an
+//! **agent-profile** competition — a closed-form model of the recursive-self-improvement
+//! (RSI) loop shape.
 //!
 //! Researchers submit *agent profiles* — the knobs that actually decide how well an
 //! agent clears a task suite: how much of the right **skill** coverage it has, the
 //! **prompt** quality, the **tool-selection** accuracy, and how well it uses
-//! **memory/retrieval**. A real agent-runtime backend would run that profile over a
+//! **memory/retrieval**. A real external backend would run that profile over a
 //! benchmark of tasks and report a pass-rate; the market's Referee re-scores the
 //! produced profile on a **held-out** task split, gates it, ranks, and pays.
 //! **Delegating the eval never delegates the trust** — a researcher's own dev-suite
@@ -13,7 +13,7 @@
 //!
 //! # The metric: a modeled task-suite pass-rate in `[0, 1]`
 //!
-//! [`ImprovementPlaneScorer`] decodes a profile's four knobs into a pass-rate that
+//! [`AgentProfileScorer`] decodes a profile's four knobs into a pass-rate that
 //! rises as the profile approaches a good agent, then evaluates it over a modeled
 //! number of held-out tasks and reports the empirical pass-rate with a **Wilson**
 //! score interval (the correct CI for a binomial proportion — far better than a
@@ -32,16 +32,15 @@
 //!
 //! # Honest seam — NOT a real agent eval
 //!
-//! [`ImprovementPlaneScorer`] is a *deterministic stand-in* for the real
-//! agent-runtime RSI loop scored by `@tangle-network/agent-eval`. It does not run an
-//! agent, call a model, or execute a task — it is a closed-form model of pass-rate
-//! dynamics (with the *shape* of skill coverage, prompt quality, tool accuracy, memory
-//! use, and dev-suite overfit), with no `rand`, no clock, and no I/O, so the e2e proof
-//! is byte-reproducible in CI. The value it proves is the **market mechanism around a
-//! delegated agent eval**: held-out re-scoring of a submitted profile, a Wilson-CI
-//! gate refusing plausible-but-overfit profiles, ranking, and conserved payouts. The
-//! live backend (Node + `agent-runtime` + `agent-eval` + model credentials) drops in
-//! behind the same `Engine`/`Scorer` seams unchanged — the universal
+//! [`AgentProfileScorer`] is a *deterministic stand-in* for a real agent eval. It does
+//! not run an agent, call a model, or execute a task — it is a closed-form model of
+//! pass-rate dynamics (with the *shape* of skill coverage, prompt quality, tool
+//! accuracy, memory use, and dev-suite overfit), with no `rand`, no clock, and no I/O,
+//! so the e2e proof is byte-reproducible in CI. The value it proves is the **market
+//! mechanism around a delegated agent eval**: held-out re-scoring of a submitted
+//! profile, a Wilson-CI gate refusing plausible-but-overfit profiles, ranking, and
+//! conserved payouts. A real external agent evaluator backend can drop in behind the same
+//! `Engine`/`Scorer` seams unchanged — the universal
 //! [`SupervisorEngine`](autoresearch_supervisor::SupervisorEngine) searches the same
 //! `params` encoding this scorer decodes.
 
@@ -77,7 +76,7 @@ pub const PROFILE_DIM: usize = 5;
 //
 // A closed-form model of how a profile's knobs convert into a task-suite pass-rate.
 // The point is not behavioral fidelity; it is to give the market a real multi-knob
-// optimization surface with the *shape* of agent-eval dynamics (each capability lifts
+// optimization surface with the *shape* of agent-evaluator dynamics (each capability lifts
 // pass-rate with diminishing returns; overfit helps dev and hurts held-out), so a
 // well-generalizing profile wins on held-out and an overfit one is gated.
 
@@ -133,8 +132,8 @@ fn squash(x: f64) -> f64 {
 
 /// A decoded, human-readable agent profile: each capability as a fraction in `[0, 1]`
 /// plus the dev-suite overfit fraction. This is the structured form of the four
-/// Improvement-Plane knobs (skills / prompt / tools / memory) the live `agent-eval`
-/// backend would carry; here it is decoded from [`GenericArtifact::params`].
+/// agent-profile knobs (skills / prompt / tools / memory) a real agent evaluator backend
+/// would carry; here it is decoded from [`GenericArtifact::params`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AgentProfile {
     /// Skill-coverage fraction in `[0, 1]`.
@@ -204,13 +203,13 @@ impl AgentProfile {
 /// a DIFFERENT modeled set (a different deterministic seed stream), so the gate is
 /// genuinely out-of-sample, not a relabeling of the same draws.
 #[derive(Clone, Copy, Debug)]
-pub struct ImprovementPlaneScorer {
+pub struct AgentProfileScorer {
     /// Number of modeled tasks in the suite (the binomial `n`). Should be at least the
     /// gate's `min_n` (12) for the held-out result to be admissible.
     n_tasks: u32,
 }
 
-impl ImprovementPlaneScorer {
+impl AgentProfileScorer {
     /// `n_tasks` is the modeled suite size; pass at least the gate's `min_n` (12).
     #[must_use]
     pub fn new(n_tasks: u32) -> Self {
@@ -295,7 +294,7 @@ fn wilson_measurement(passes: u32, n: u32) -> Measurement {
     }
 }
 
-impl Scorer for ImprovementPlaneScorer {
+impl Scorer for AgentProfileScorer {
     type Artifact = GenericArtifact;
 
     fn id(&self) -> &str {
@@ -358,7 +357,7 @@ mod tests {
     fn pass_rate_rises_with_capability() {
         // A strong-capability profile passes more tasks than the zero-knob baseline,
         // on BOTH splits, when neither is overfit.
-        let scorer = ImprovementPlaneScorer::new(200);
+        let scorer = AgentProfileScorer::new(200);
         let base = baseline_profile();
         let strong = knobs(3.0, 3.0, 3.0, 3.0, 0.0);
         for split in [Split::Dev, Split::HeldOut] {
@@ -375,7 +374,7 @@ mod tests {
     fn overfit_helps_dev_but_hurts_heldout() {
         // The generalization gap the gate exploits: an overfit profile looks BETTER on
         // dev than on held-out. Same capability, only the overfit knob differs.
-        let scorer = ImprovementPlaneScorer::new(400);
+        let scorer = AgentProfileScorer::new(400);
         let overfit = knobs(2.0, 2.0, 2.0, 2.0, 4.0);
         let dev = scorer.measure(&overfit, Split::Dev).value;
         let held = scorer.measure(&overfit, Split::HeldOut).value;
@@ -389,7 +388,7 @@ mod tests {
     fn generalizing_beats_overfit_on_heldout() {
         // A well-generalizing profile (high capability, no overfit) beats an
         // equal-effort overfit profile on the held-out split that decides payment.
-        let scorer = ImprovementPlaneScorer::new(400);
+        let scorer = AgentProfileScorer::new(400);
         let general = knobs(3.0, 3.0, 2.5, 2.0, 0.0);
         let overfit = knobs(1.0, 1.0, 0.5, 0.5, 5.0);
         let g = scorer.measure(&general, Split::HeldOut).value;
@@ -405,7 +404,7 @@ mod tests {
         // Even with overfit=0 the two splits draw different task outcomes (disjoint
         // seed universes), so the held-out gate is genuinely out-of-sample. A profile
         // pinned to a clearly-passing rate should still differ shard-by-shard.
-        let scorer = ImprovementPlaneScorer::new(64);
+        let scorer = AgentProfileScorer::new(64);
         let p = knobs(0.5, 0.5, 0.5, 0.5, 0.0);
         let dev = scorer.measure(&p, Split::Dev);
         let held = scorer.measure(&p, Split::HeldOut);
@@ -418,7 +417,7 @@ mod tests {
 
     #[test]
     fn measurement_is_deterministic() {
-        let scorer = ImprovementPlaneScorer::new(128);
+        let scorer = AgentProfileScorer::new(128);
         let p = knobs(1.5, 1.0, 0.8, 0.4, 1.0);
         let a = scorer.measure(&p, Split::HeldOut);
         let b = scorer.measure(&p, Split::HeldOut);
@@ -459,7 +458,7 @@ mod tests {
 
     #[tokio::test]
     async fn score_future_matches_measure() {
-        let scorer = ImprovementPlaneScorer::new(32);
+        let scorer = AgentProfileScorer::new(32);
         let p = knobs(1.0, 1.0, 1.0, 1.0, 0.0);
         let via_future = scorer.score(&p, Split::Dev).await.unwrap();
         let via_sync = scorer.measure(&p, Split::Dev);

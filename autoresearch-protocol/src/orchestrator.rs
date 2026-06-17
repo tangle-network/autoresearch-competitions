@@ -3,7 +3,7 @@
 //! [`run_oneshot_competitive`] is the off-chain Referee + market-maker loop for a
 //! `Competitive x OneShot x Public x HeldOutEval` competition. It is generic over
 //! the three seams — [`Surface`], [`Scorer`], [`Engine`] — so the same loop drives
-//! the M1 demo vertical and the production agent-eval vertical without change.
+//! the M1 demo vertical and a future production agent-eval vertical without change.
 //!
 //! Flow:
 //! 1. Score the baseline once on [`Split::HeldOut`] (the bar everyone is measured against).

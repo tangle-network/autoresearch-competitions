@@ -2,7 +2,9 @@
 
 How the autoresearch-competitions market drives **communication-efficient
 distributed training**, and the full path from the in-repo seam shipped today to a
-production multi-node, multi-instance trainer wrapping proven open-source cores.
+production multi-node, multi-instance trainer. The in-repo adapters are generic
+external-process seams; they do not bundle any specific third-party training
+framework.
 
 > **Status legend:** ✅ shipped in this repo · 🟡 spec'd, not built · 🔶 lives in
 > the sibling `training-blueprint` repo · ⛔ blocked on external infra (GPUs /
@@ -26,7 +28,7 @@ keeps "pay only for certified lift" intact when someone else's GPUs did the work
 | Shared each step | gradients/weights | nothing (only final artifacts) |
 | Cross-cluster traffic | high → bandwidth-walled | ~none during training |
 | Scaling in k | sublinear, needs hierarchy | **near-linear** |
-| Mechanism | DiLoCo outer loop / Psyche coordinator across clusters | branch-train-merge; the **market** is the merge/select |
+| Mechanism | DiLoCo outer loop / external coordinator across clusters | branch-train-merge; the **market** is the merge/select |
 | In this design | Phase 4 (hierarchical) | **native** — Phase 0 already models it |
 
 A single instance is bandwidth-bound (m-of-n is a *result-agreement* boundary, not
@@ -35,7 +37,12 @@ scaling is the loosely-coupled regime — k instances each train a candidate, th
 held-out gate merges/selects — which is near-linear and is the regime where the
 "trillion auto-researching agents" framing is real rather than marketing.
 
-## 3. What we wrap (licenses verified)
+## 3. Design targets and prior art
+
+The in-repo adapters are shaped after the DiLoCo/DeMo family of
+communication-efficient distributed training algorithms. They are **not**
+hard-wired to any specific implementation; the caller supplies the external binary
+or service instance.
 
 | Project | Repo | License | Role |
 | --- | --- | --- | --- |
@@ -45,9 +52,9 @@ held-out gate merges/selects — which is near-linear and is the regime where th
 | Psyche | `PsycheFoundation/psyche` | Apache-2.0 | decentralized training network (Coordinator/Client/Data-Provider; DeMo optimizer) |
 | DeMo | Nous (vendored in Psyche) | Apache-2.0 (via Psyche) | Decoupled-Momentum optimizer; standalone repo license to re-confirm before vendoring |
 
-All permissive. **Design stance:** borrow the *training core* (`prime` / DeMo),
+All permissive. **Design stance:** borrow the *algorithmic shape* (DiLoCo/DeMo),
 **own the coordinator + economic + gate layer as Tangle-native** — do not adopt
-Psyche's Solana chain layer. Same two-level shape (coordinator + clients), our
+any third-party chain layer. Same two-level shape (coordinator + clients), our
 m-of-n + held-out gate + reward settlement is the differentiator.
 
 ## 4. Phased checklist
@@ -74,18 +81,19 @@ real DiLoCo/DeMo tradeoffs, proving the market mechanism end-to-end with no GPUs
 ### Phase 1 — Real cluster adapter ✅ ⛔ (code shipped; execution infra-gated)
 
 Crate `autoresearch-training-runtime`, mirroring how `autoresearch-sandbox-runtime`
-gates the real sandbox backend (`default = []`; `prime-backend` / `psyche-backend`
-gate the heavy execution path).
+gates the real sandbox backend (`default = []`; `subprocess-backend` /
+`service-backend` gate the heavy execution path).
 
-- [x] `PrimeCluster` (prime, MIT) + `PsycheCluster` (Psyche, Apache-2.0) implement
+- [x] `SubprocessTrainingCluster` + `ServiceTrainingCluster` implement
       `TrainingCluster`; drop into `DistributedTrainingEngine` unchanged.
-- [x] `recipe_to_prime_config` / `recipe_to_psyche_config` — pure, unit-tested
-      mapping of `TrainingRecipe` → a real prime/DiLoCo (or Psyche/DeMo) run config.
+- [x] `recipe_to_subprocess_config` / `recipe_to_service_config` — pure, unit-tested
+      mapping of `TrainingRecipe` → an external DiLoCo/DeMo-style run config.
 - [x] Feature-off `train()` returns a named `EngineError::Backend`; feature-on
       builds the real `tokio::process` invocation + checkpoint parse.
 - [x] `provides_sealed_isolation()` tracks a TEE flag (`.with_tee()`).
-- [ ] ⛔ Actually *running* a checkpoint needs `prime`/Psyche installed + GPUs /
-      operator instances. The code is real; the execution is not exercised here.
+- [ ] ⛔ Actually *running* a checkpoint needs a caller-supplied external training
+      binary/service + GPUs / operator instances. The code is real; the execution is
+      not exercised here.
 
 ### Phase 2 — `training-blueprint` realism ✅ (PR open in sibling repo)
 
@@ -143,9 +151,10 @@ gate the heavy execution path).
 Shipped: **Phase 0** (one-shot training market) plus **Phases 1, 3, 4, 5** as real,
 tested, CI-green code in this repo, and **Phase 2** as an open PR in the sibling
 `training-blueprint` repo. What is **simulated** (not real GPU training): the
-`LocalSimCluster` / `HierarchicalCluster` dynamics and the prime/Psyche *execution*
-path (feature-gated, needs the frameworks + GPUs). What is **real and exercised**:
-the cluster-agnostic seam, the recipe→config mappings, the continuous-market and
-m-of-n re-score mechanics, the TEE→cluster binding, and (in `training-blueprint`) the
-held-out certification gate. The remaining ⛔ items all need live GPU/operator infra
-or on-chain enforcement wiring — the algorithms (DiLoCo/DeMo) are solved and open.
+`LocalSimCluster` / `HierarchicalCluster` dynamics and the subprocess/service
+*execution* path (feature-gated, needs a caller-supplied external backend + GPUs).
+What is **real and exercised**: the cluster-agnostic seam, the recipe→config
+mappings, the continuous-market and m-of-n re-score mechanics, the TEE→cluster
+binding, and (in `training-blueprint`) the held-out certification gate. The
+remaining ⛔ items all need live GPU/operator infra or on-chain enforcement wiring
+— the algorithms (DiLoCo/DeMo) are solved and open.

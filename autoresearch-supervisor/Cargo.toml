@@ -3,17 +3,17 @@ name = "autoresearch-supervisor"
 version = "0.1.0"
 edition.workspace = true
 authors.workspace = true
-description = "The universal improvement engine: one RSI SupervisorEngine (backed by @tangle-network/agent-runtime's long-horizon supervisor) that improves ANY artifact against ANY scorer. Every algorithmic-advancement domain collapses to writing a Scorer — the Engine is shared."
+description = "The universal improvement engine: one local-search SupervisorEngine and one external-process SubprocessEngine that improve ANY artifact against ANY scorer. Every algorithmic-advancement domain collapses to writing a Scorer — the Engine is shared."
 license.workspace = true
 
 [features]
 default = []
-# The real backend drives the @tangle-network/agent-runtime supervisor (the RSI agent
-# that runs long-horizon improvement) as a subprocess. It is gated so the default build
+# The external-process backend shells out to a caller-supplied driver binary with a JSON
+# manifest and parses the returned artifact content. It is gated so the default build
 # stays a thin, deterministic shell (the in-process local-search stand-in); enabling it
-# pulls in tokio for the async process/JSON path. Like the prime/Psyche backends, the
-# code is real but EXECUTION needs Node + the agent-runtime package + model credentials.
-agent-runtime = ["dep:tokio"]
+# pulls in tokio for the async process/JSON path. This crate does not ship a driver; the
+# caller must provide one.
+subprocess-backend = ["dep:tokio"]
 
 [dependencies]
 autoresearch-runtime = { path = "../autoresearch-runtime" }

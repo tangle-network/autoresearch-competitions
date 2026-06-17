@@ -21,12 +21,10 @@
 //!   compression cliff, the large-batch penalty from too many islands) so a tuned
 //!   recipe produces a *real*, gate-clearing held-out lift and bad recipes are
 //!   refused — with no GPUs, no clock, and no I/O (so it runs in CI).
-//! - A production `PrimeCluster` / `PsycheCluster` (Phase 1 of
-//!   `docs/DISTRIBUTED-TRAINING.md`) implements the same trait by submitting a
-//!   training job to a distributed-training **service instance** (Prime
-//!   Intellect's `prime`, MIT; or Psyche, Apache-2.0) whose own m-of-n operator
-//!   cluster runs the multi-node training. It drops in behind this trait with no
-//!   change to the engine, surface, scorer, or orchestrator.
+//! - A production subprocess or service-instance backend (see
+//!   `autoresearch-training-runtime`) implements the same trait by launching an
+//!   external training job. It drops in behind this trait with no change to the
+//!   engine, surface, scorer, or orchestrator.
 //!
 //! [`DistributedTrainingEngine`] is generic over the cluster, which is what makes
 //! that substitution a one-line change at the call site.
@@ -34,10 +32,10 @@
 //! # Honest seam — NOT a real GPU cluster
 //!
 //! [`LocalSimCluster`] is a *simulation* of training dynamics, not a trainer. It
-//! is the marked stand-in for the real `prime`/Psyche/DeMo integration. The value
-//! it proves is the **market mechanism around training**: cluster-agnostic
-//! dispatch, held-out re-scoring of a delegated artifact, the promotion gate
-//! refusing plausible-but-worse recipes, and the TEE→cluster isolation binding.
+//! is the marked stand-in for a real distributed-training backend. The value it
+//! proves is the **market mechanism around training**: cluster-agnostic dispatch,
+//! held-out re-scoring of a delegated artifact, the promotion gate refusing
+//! plausible-but-worse recipes, and the TEE→cluster isolation binding.
 
 use std::future::Future;
 
@@ -113,7 +111,7 @@ fn jitter(mix: u64) -> f64 {
 
 /// A communication-efficient distributed-training recipe. These are exactly the
 /// knobs a DiLoCo/DeMo run is sensitive to; a real backend would pass them through
-/// to `prime`/Psyche.
+/// to the external trainer.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TrainingRecipe {
     /// Data-parallel islands (independent replicas synced by the outer optimizer).
@@ -357,7 +355,7 @@ impl Scorer for DistributedTrainingScorer {
 
 /// The one interface a distributed-training backend implements. [`LocalSimCluster`]
 /// is the in-repo stand-in; a production adapter submits the recipe as a training
-/// job to a `prime`/Psyche service instance (whose own m-of-n operators run the
+/// job to an external service instance (whose own m-of-n operators run the
 /// multi-node training) and returns the trained artifact. The market is agnostic
 /// to which — [`DistributedTrainingEngine`] is generic over this trait.
 pub trait TrainingCluster {
@@ -417,9 +415,9 @@ impl TrainingCluster for LocalSimCluster {
 
 /// A researcher's engine: it holds one training recipe and dispatches it to a
 /// [`TrainingCluster`], returning the trained artifact for the market to score.
-/// Generic over the cluster so the production `prime`/Psyche backend drops in
-/// unchanged. Mirrors the agent-method `SandboxMethodEngine`: the engine forwards
-/// the cluster's sealed-isolation property so the TEE→backend binding holds.
+/// Generic over the cluster so a production external backend drops in unchanged.
+/// Mirrors the agent-method `SandboxMethodEngine`: the engine forwards the
+/// cluster's sealed-isolation property so the TEE→backend binding holds.
 #[derive(Clone, Debug)]
 pub struct DistributedTrainingEngine<C> {
     researcher: String,

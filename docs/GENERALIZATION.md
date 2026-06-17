@@ -23,10 +23,11 @@ Historically, a new domain could mean a new `Engine` — unbounded maintenance. 
 - **`SupervisorEngine`** improves *any* `GenericArtifact` against *any* `Scorer` by
   running a long-horizon propose → score → keep-better loop. It is **domain-blind**:
   it searches the artifact's numeric encoding; only the `Scorer` knows the domain.
-- The real backend is **`AgentRuntimeSupervisor`** (feature `agent-runtime`), which
-  drives `@tangle-network/agent-runtime`'s **RSI supervisor** (the recursive
-  self-improvement agent for long-horizon tasks) as a subprocess. Same `Engine`
-  trait, so it is a one-line swap for the deterministic stand-in.
+- **`SubprocessEngine`** (feature `subprocess-backend`) is a generic external-process
+  backend: it shells out to a caller-supplied driver binary with a JSON manifest and
+  parses the returned artifact content. Same `Engine` trait, so it is a one-line swap
+  for the deterministic stand-in. This crate does not ship a driver; it is a seam for
+  plugging in a real solver/prover/agent loop when one is available.
 
 **Adding a domain is now: write a `Scorer`.** Not an engine. That is the maintenance
 win.
@@ -52,8 +53,8 @@ Each is just a `Scorer<Artifact = GenericArtifact>` (in `autoresearch-verticals`
 kinds of engine coexist:
 
 1. **Specialized engines** — for producers that are *not* a search loop:
-   - `DistributedTrainingEngine` — improvement *is* a multi-node training run on a
-     GPU cluster (prime/Psyche); the "search" is distributed gradient descent.
+   - `DistributedTrainingEngine` — improvement *is* a multi-node training run on an
+     external GPU cluster; the "search" is distributed gradient descent.
    - `BlackBoxOptimizerEngine` — queries a hidden reference oracle (private/quantum).
    - `FixedConfigEngine` — passthrough of a fixed submission (e.g. nanoGPT).
 2. **The universal engine** (`SupervisorEngine`) — for the broad class where "improve
@@ -72,7 +73,8 @@ and engines and continue to work. Migrating them onto `GenericArtifact` +
 
 1. Implement `Scorer<Artifact = GenericArtifact>` for your domain (dev + held-out
    splits, a CI). Encode the domain candidate in `GenericArtifact::params` for the
-   deterministic stand-in; the real artifact lives in `content` for the live backend.
+   deterministic stand-in; the real artifact lives in `content` for an external
+   backend plugged into `SubprocessEngine`.
 2. (Optional) a domain `Surface` if `GenericSurface` is too permissive.
 3. Drive it with `SupervisorEngine::new(researcher, start, dev_scorer, seed)` — no
    new engine. Add an e2e proving the market certifies a gate-clearing lift.
@@ -82,7 +84,6 @@ and engines and continue to work. Migrating them onto `GenericArtifact` +
 The `SupervisorEngine` stand-in is a *search over a numeric encoding*, and each
 domain scorer is a *deterministic model* of its metric — enough to prove the market +
 engine generality in CI, not a live solver/prover/forecaster. The real artifacts
-(actual code, proofs, prompts, models) are produced by the live `agent-runtime` RSI
-backend, which needs Node + the package + model credentials — the same honesty
-boundary as the `prime`/`psyche` training backends. The market never trusts what a
-backend returns: the Referee re-scores on held-out before any payout.
+(actual code, proofs, prompts, models) would be produced by an external backend
+plugged into `SubprocessEngine` or a domain-specific engine. The market never trusts
+what a backend returns: the Referee re-scores on held-out before any payout.

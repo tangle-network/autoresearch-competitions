@@ -35,12 +35,11 @@
 //!
 //! This module is a *closed-form model* of forecasting dynamics over a synthetic
 //! series — no `rand`, no clock, no I/O — so every CI proof is byte-reproducible.
-//! It is the marked stand-in for the real artifact: a live forecasting agent the
-//! `agent-runtime` RSI supervisor would build and back-test against real data.
-//! What it proves is the **market mechanism around forecasting**: the universal
-//! engine searching a coefficient encoding, held-out re-scoring of the produced
-//! model, and the promotion gate refusing an over-fit that only looked good
-//! in-sample.
+//! It is the marked stand-in for the real artifact: a live forecasting model built
+//! and back-tested against real data. What it proves is the **market mechanism
+//! around forecasting**: the universal engine searching a coefficient encoding,
+//! held-out re-scoring of the produced model, and the promotion gate refusing an
+//! over-fit that only looked good in-sample.
 
 use std::future::Future;
 

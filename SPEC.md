@@ -84,7 +84,7 @@ Canon terms. Other docs use these exact names.
 | **Certified lift** | A Referee-attested improvement on the held-out measure: `value` with a confidence interval `ci`, signed with a TEE attestation hash. The unit a Proposer pays for. |
 | **Marginal improvement** | In `Continuous` cadence, reward is paid for the **lift over the current best** (the record), not for absolute score. Beating the leaderboard by a hair pays; matching it pays nothing. |
 | **Commit-reveal** | Two-phase submission: a Researcher first commits a hash of their artifact (`COMMIT_CANDIDATE`), then reveals it (`REVEAL_CANDIDATE`). Prevents copying a rival's revealed artifact and re-submitting it as your own. |
-| **Improvement-Plane** | The agent-specific Scorer substrate (AgentProfile + agent-eval): replay Tiers A/B/C, a held-out gate (`minLiftCiLower 0.02`, `costPerTaskCeiling`), an evidence ledger, and validity guards (`n ≥ 12`, model parity, state-complete). |
+| **Agent-profile stand-in** | The local closed-form Scorer substrate for the agent vertical (`AgentProfileScorer`): models skill/prompt/tool/memory/overfit knobs, a held-out gate (`minLiftCiLower 0.02`), and validity guards (`n ≥ 12`, model parity, state-complete). A real external agent evaluator plugs into the same seam. |
 | **Attestation hash** | A hash of the TEE attestation evidence (enclave measurement + inputs) committed on-chain alongside a certified score, so the chain stays O(competitions) while the heavy evidence lives off-chain and is re-checked only on dispute. **Known gap:** attestation is structural-only today (see §10, ARCHITECTURE). |
 
 ---
@@ -297,10 +297,11 @@ pub enum RewardSchedule {
 pub struct ContributionShare { pub researcher: Address, pub share_bps: u16 } // sum = 10_000
 ```
 
-The `Improvement-Plane` instantiates these for the agent case: `Surface =
-AgentProfile`, `Scorer = agent-eval` with replay Tiers A/B/C and a held-out gate
-(`min_lift_ci_lower = 0.02`, `cost_per_task_ceiling`), guarded by `n >= 12`,
-model parity, and state-completeness.
+The agent-profile stand-in instantiates these for the agent case: `Surface =
+AgentProfile`, `Scorer = AgentProfileScorer` — a closed-form model of agent
+pass-rate dynamics with a held-out gate (`min_lift_ci_lower = 0.02`), guarded by
+`n >= 12`, model parity, and state-completeness. A real external agent evaluator
+plugs into the same seam.
 
 ---
 
@@ -423,8 +424,8 @@ Walkthrough:
 **Knobs:** `Competitive × Continuous × Public × HeldOutEval`.
 **Engine:** sandboxed agent self-improvement loops (diagnose → propose-variant →
 backtest → promote-if-metric+10%-&-no-regression, walk-forward holdout).
-**Scorer:** `HeldOutEval` over an AgentProfile (Improvement-Plane; replay Tiers
-A/B/C, held-out gate `min_lift_ci_lower 0.02`).
+**Scorer:** `HeldOutEval` over an AgentProfile (`AgentProfileScorer` stand-in;
+held-out gate `min_lift_ci_lower 0.02`).
 **RewardSchedule:** `RecordBounty` (marginal lift over current best) and/or
 `TimeAtTopStreaming`.
 
@@ -530,9 +531,9 @@ campaign with a pass gate.
 | **E6 — Scale / fleet consistency** | The same competition state settles identically across many sandbox instances; chain footprint stays O(competitions). | Cross-instance settlement is bit-identical; on-chain writes scale with competitions, not artifacts. |
 | **E7 — Dispute & slash** | `CHALLENGE` paths slash the faulty party in both directions (bad Referee, bad challenger). | Re-score disagreement → correct party slashed; tolerance honored. |
 
-Validity guards inherited from the Improvement-Plane apply to any agent-Scorer
-eval: `n ≥ 12`, model parity across compared runs, state-completeness, and the
-held-out gate (`min_lift_ci_lower 0.02`, `cost_per_task_ceiling`).
+Validity guards inherited from the agent-profile stand-in apply to any
+agent-Scorer eval: `n ≥ 12`, model parity across compared runs,
+state-completeness, and the held-out gate (`min_lift_ci_lower 0.02`).
 
 ---
 

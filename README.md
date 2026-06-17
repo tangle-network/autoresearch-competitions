@@ -129,9 +129,10 @@ This blueprint:
   validator m-of-n EIP-712 attestation, a self-improvement loop, and x402 pricing.
 - **Composes** the training-blueprint as the `Collaborative` Engine (DeMo
   distributed training over pooled compute).
-- **Uses the Improvement-Plane as the agent Scorer substrate** — certified causal
-  lift on held-out data (default `minLiftCiLower` 0.02, `n ≥ 12`, replay tiers
-  A/B/C, an evidence ledger).
+- **Agent-profile Scorer stand-in** — a closed-form model of agent-profile
+  pass-rate dynamics, producing certified causal lift on held-out data (default
+  `minLiftCiLower` 0.02, `n ≥ 12`). A real external agent evaluator can plug into
+  the same seam.
 
 ### Core interfaces (pluggable)
 
@@ -206,7 +207,7 @@ autoresearch-competitions/
 | --- | --- |
 | [`SPEC.md`](SPEC.md) | The normative spec: knobs, interfaces, roles, on-chain types, and job ABI. |
 | [`docs/RESEARCH.md`](docs/RESEARCH.md) | Market thesis, prior art, and the EigenCloud / Eigen Arena / OpenRank competitive landscape. |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System architecture: settlement spine, operator fleet, sandboxes, Referee, and composition with the sandbox/training/Improvement-Plane substrates. |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System architecture: settlement spine, operator fleet, sandboxes, Referee, and composition with the sandbox/training/agent-profile substrates. |
 | [`docs/MECHANISM.md`](docs/MECHANISM.md) | Incentive mechanism: reward schedules, marginal-lift pricing, anti-gaming, and dispute resolution. |
 | [`docs/PRIVACY.md`](docs/PRIVACY.md) | Privacy model: scores-not-data, TEE boundaries, sealed held-out sets, and private oracles. |
 | [`ROADMAP.md`](ROADMAP.md) | Phased delivery plan from scaffold to the three reference scenarios. |

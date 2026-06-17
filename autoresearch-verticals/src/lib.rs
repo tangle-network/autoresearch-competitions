@@ -9,7 +9,7 @@
 //! lift on held-out data with no external dependencies. It is the M1 proof that the
 //! whole loop — produce, validate, score, gate, rank, settle — works end to end on
 //! one box. Its scorer/engine are the local stand-ins for the production
-//! Improvement-Plane scorer and sandbox agent-loop engine; the trait seams are
+//! agent-profile scorer and sandbox agent-loop engine; the trait seams are
 //! identical so production adapters drop in.
 //!
 //! The [`scorers`] module adds the remaining three [`autoresearch_runtime::ScorerKind`]s
@@ -58,7 +58,7 @@ pub use training_market::{
 
 // The universal-engine verticals: each is just a `Scorer` over `GenericArtifact`,
 // all driven by the one `autoresearch_supervisor::SupervisorEngine`.
-pub use agent_improvement::ImprovementPlaneScorer;
+pub use agent_improvement::AgentProfileScorer;
 pub use combinatorial_solver::SolverScorer;
 pub use forecasting::ForecastScorer;
 pub use program_superopt::ProgramScorer;

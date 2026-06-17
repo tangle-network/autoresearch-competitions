@@ -9,12 +9,12 @@
 //! # Why a wrapper, not a new cluster
 //!
 //! Sealing is orthogonal to *how* the recipe is trained: a real deployment runs the
-//! exact same `prime`/Psyche training job, only inside a confidential VM. So
+//! exact same external training job, only inside a confidential VM. So
 //! [`TeeSimCluster`] **wraps** any inner [`TrainingCluster`] and delegates
 //! [`TrainingCluster::train`] to it unchanged — the only thing it overrides is
 //! [`TrainingCluster::provides_sealed_isolation`], which it reports `true`. That is
-//! exactly the production shape: `TeeSimCluster<PrimeCluster>` would be "the prime
-//! trainer, in an enclave," with no change to the training path.
+//! exactly the production shape: `TeeSimCluster<ExternalTrainingCluster>` would be
+//! "the external trainer, in an enclave," with no change to the training path.
 //!
 //! # Honest seam — structural-only attestation (PRIVACY §12)
 //!
@@ -65,7 +65,8 @@ use crate::distributed_training::{TrainedArtifact, TrainingCluster, TrainingReci
 /// and adds one thing: it declares [`TrainingCluster::provides_sealed_isolation`] is
 /// `true`, so a [`DistributedTrainingEngine`](crate::distributed_training::DistributedTrainingEngine)
 /// over it clears the private runner's tier→sandbox binding. In production this is
-/// `TeeSimCluster<PrimeCluster>` — the same trainer, inside a confidential VM.
+/// `TeeSimCluster<ExternalTrainingCluster>` — the same external trainer, inside a
+/// confidential VM.
 ///
 /// **Honesty (PRIVACY §12):** the sealing is an interface claim plus a *structural-only*
 /// attestation (see [`Self::attestation_report`]); it is not a verified enclave. The

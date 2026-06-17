@@ -3,18 +3,18 @@ name = "autoresearch-training-runtime"
 version = "0.1.0"
 edition.workspace = true
 authors.workspace = true
-description = "The REAL distributed-training compute: implements autoresearch-verticals' TrainingCluster against the open-source prime (Prime Intellect, MIT) and Psyche (Apache-2.0) frameworks, behind the `prime-backend` / `psyche-backend` features."
+description = "External-process training-cluster adapters: subprocess and service-instance backends for autoresearch-verticals' TrainingCluster, behind the `subprocess-backend` / `service-backend` features. No external framework is bundled."
 license.workspace = true
 
 [features]
 default = []
 # The two heavy EXECUTION paths are feature-gated so the default `cargo build` stays a
 # thin, fast shell that compiles only the pure config-mapping + trait surface. Enabling a
-# feature pulls in `tokio` (the job-submission path is async) and turns on the real
-# process/job-launch + checkpoint-parse body. Neither feature *runs* without the framework
-# installed and GPUs present — they gate the code, not a stub.
-prime-backend = ["dep:tokio"]
-psyche-backend = ["dep:tokio"]
+# feature pulls in `tokio` (the job-submission path is async) and turns on the
+# process/job-launch + checkpoint-parse body. Neither feature *runs* without the caller
+# supplying the external binary/service — they gate the code, not a stub.
+subprocess-backend = ["dep:tokio"]
+service-backend = ["dep:tokio"]
 
 [dependencies]
 autoresearch-verticals = { path = "../autoresearch-verticals" }
@@ -23,8 +23,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 
-# Async job submission for the real backends, behind the features. The pure mapping and
-# trait surface do not need it, so the default build never compiles it.
+# Async job submission for the external backends, behind the features. The pure mapping
+# and trait surface do not need it, so the default build never compiles it.
 tokio = { version = "1", features = ["rt", "macros", "process"], optional = true }
 
 [dev-dependencies]

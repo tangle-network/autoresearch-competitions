@@ -157,12 +157,12 @@ the training blueprint. Three layers, with a strict one-way dependency rule.
 | L1 sandbox-runtime | `SandboxProvider`, `RuntimeAdapter`, `TemplatePack`, `TenantProfile`, `InstanceLifecycleReporter`; sandbox jobs `SANDBOX_CREATE/DELETE/WORKFLOW_*`; TEE backends; sealed secrets (x25519); cloud/instance/tee-instance modes; `PROVISION`/`DEPROVISION` | TemplatePacks for Engine sidecars and the Referee Scorer image |
 | L2 (this) | — | Competition jobs 0–7; `CompetitionManager` (BSM subclass) + Escrow/Leaderboard/RewardDistributor/AttestationRegistry/DisputeManager; `Surface`/`Scorer`/`Engine`/`RewardSchedule` traits; Engine + Scorer adapters; Referee TEE eval path; operator API :9200 + domain API :9100 |
 
-The agent **Scorer** vertical (`HeldOutEval` over an AgentProfile) reuses the
-**Tangle Intelligence Improvement-Plane**: AgentProfile, agent-eval
-(`EvalRunEvent`/`TraceSpanEvent`), replay Tiers A/B/C, the held-out gate, the
-evidence ledger, and the R2 validity guards. The **Collaborative** path reuses
-the **training blueprint** (DeMo, `DistributedTrainingBSM.sol`) by dispatching
-its jobs — not by importing its internals (that would violate `L2 → L2`).
+The agent **Scorer** vertical (`HeldOutEval` over an AgentProfile) is a local
+closed-form **stand-in** for a real agent-eval backend: it models AgentProfile
+knobs, a held-out gate, and R2 validity guards, without importing or running any
+external agent framework. The **Collaborative** path reuses the **training
+blueprint** (DeMo, `DistributedTrainingBSM.sol`) by dispatching its jobs — not by
+importing its internals (that would violate `L2 → L2`).
 
 ### 2.x The operator-compute seam — `SandboxHost` + the TEE/no-TEE toggle
 
@@ -466,7 +466,7 @@ Four concrete adapters, one per `Scorer type` knob:
 
 | Adapter (proposed) | knob | Substrate | Certified output |
 | --- | --- | --- | --- |
-| **`ImprovementPlaneScorer`** | `HeldOutEval` | agent-eval over an AgentProfile; replay Tiers A (full re-exec) / B (tool-mocked deterministic) / C (observational, **never promotes**); held-out gate `minLiftCiLower 0.02`, `costPerTaskCeiling` | `{value, ci, cost, diagnostics, n}` + evidence-ledger entry |
+| **`AgentProfileScorer`** | `HeldOutEval` | closed-form agent-profile stand-in; models skill/prompt/tool/memory/overfit knobs with a held-out gate `minLiftCiLower 0.02` | `{value, ci, cost, diagnostics, n}` + evidence-ledger entry |
 | **`PrivateOracleScorer`** | `PrivateOracle` | a hidden reference answer the Researcher cannot see (e.g. withheld ground-truth circuit result) | same |
 | **`PrivilegedHardwareScorer`** | `PrivilegedHardware` | hardware only the Referee has (real QPU, licensed simulator, specialized rig) | same |
 | **`HumanPanelScorer`** | `HumanPanel` | a panel of human judges (subjective surfaces: design, writing, alignment) | same; higher variance, so prefer `SnapshotTopK` over `RecordBounty` (SPEC §4) |
@@ -494,7 +494,7 @@ leakage-bounded — rate-limit + CI noise + rotation + slash on over-query
 
 1. Referee receives the revealed artifact; `Surface::apply` materializes a target.
 2. Scorer runs on the **held-out** split → `Score{value, ci, cost, diagnostics, n}`.
-3. Validity guards (Improvement-Plane R2): `n ≥ 12`, model parity across compared
+3. Validity guards (agent-profile R2): `n ≥ 12`, model parity across compared
    runs, state-complete snapshot. Failing a guard blocks certification.
 4. **Certified lift** = `value` with `ci`, signed with the TEE attestation hash.
 5. `REPORT_SCORE` (job 4) writes `{value, ci, n, cost}` + attestation hash to the
@@ -601,7 +601,7 @@ the Referee. Researcher sees *their fidelity score*, never the oracle.
 
 ```
   loop per epoch:
-    Researchers ─ COMMIT/REVEAL ─▶ Referee scores on HELD-OUT (Improvement-Plane)
+    Researchers ─ COMMIT/REVEAL ─▶ Referee scores on HELD-OUT (agent-profile stand-in)
                                    REPORT_SCORE + attest hash ─▶ Leaderboard (PUBLIC)
     TICK ─▶ close epoch ─▶ SETTLE: pay marginal lift over prior record + streaming
     anyone ─ recompute ranks from on-chain scores + attest hashes + revealed artifacts

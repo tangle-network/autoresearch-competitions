@@ -128,7 +128,7 @@ pub struct ContinuousMarketOutcome {
 #[derive(Clone, Debug)]
 pub struct ContinuousTrainingMarket {
     /// The cluster that trains each submitted recipe (the local stand-in here; a
-    /// real `prime`/Psyche backend drops in unchanged behind the same trait).
+    /// real external backend drops in unchanged behind the same trait).
     cluster: LocalSimCluster,
     /// The Referee's held-out scorer. `eval_shards` should be >= the gate's `min_n`.
     scorer: DistributedTrainingScorer,

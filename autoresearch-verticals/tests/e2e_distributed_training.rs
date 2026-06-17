@@ -2,8 +2,8 @@
 //! and pays only for certified, generalizing improvement.
 //!
 //! Five researchers submit real DiLoCo/DeMo-style training recipes; each is trained
-//! by a [`LocalSimCluster`] (the deterministic stand-in for a `prime`/Psyche
-//! service instance), and the market re-scores every produced artifact on a
+//! by a [`LocalSimCluster`] (the deterministic stand-in for an external distributed
+//! training backend), and the market re-scores every produced artifact on a
 //! held-out split, gates, ranks, and pays. The strong recipe (more islands at the
 //! optimal sync interval) wins; the failure-mode recipes (island drift from a
 //! too-large sync interval, over-compressed gradients, a mis-set learning rate)

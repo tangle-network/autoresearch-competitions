@@ -212,7 +212,7 @@ contract CompetitionManager is BlueprintServiceManagerBase {
     /// `autoresearch_runtime::types::ScorerKind`:
     ///   0 = HeldOutEval, 1 = PrivateOracle, 2 = PrivilegedHardware, 3 = HumanPanel.
     /// 0 is also the default for any competition created without a kind (the
-    /// Improvement-Plane held-out-eval default). Recording WHICH scorer adjudicated
+    /// agent-profile held-out-eval default). Recording WHICH scorer adjudicated
     /// puts that fact on the verifiable leaderboard: an indexer / disputer can see the
     /// referee class a payout was certified under. Scoring itself is OFF-CHAIN by design
     /// (the chain never runs an oracle / privileged device / human panel); this records

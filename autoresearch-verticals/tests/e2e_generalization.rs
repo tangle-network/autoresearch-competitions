@@ -88,7 +88,7 @@ async fn one_engine_improves_every_domain() {
     results.push(("theorem-proving", b, p));
 
     let (b, p) = universal_improves(
-        agent::ImprovementPlaneScorer::new(16),
+        agent::AgentProfileScorer::new(16),
         agent::baseline_profile(),
         4000,
         0.5,
