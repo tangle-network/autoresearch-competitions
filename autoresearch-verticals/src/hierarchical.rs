@@ -5,9 +5,9 @@
 //! [`TrainingCluster`]. The next rung up is geographic/organizational: a model
 //! trained simultaneously over several loosely-coupled clusters (each its own
 //! operator set), with a slow **outer-outer** synchronization stitching the
-//! per-cluster replicas together. This is exactly the regime Prime Intellect's
-//! INTELLECT-class runs and Nous' Psyche live in — many sites, each internally a
-//! DiLoCo island-set, coordinated by a higher-tier sync.
+//! per-cluster replicas together. This is the regime real multi-site
+//! distributed-training backends live in — many sites, each internally a DiLoCo
+//! island-set, coordinated by a higher-tier sync.
 //!
 //! [`HierarchicalCluster`] is itself a [`TrainingCluster`]: it composes `k` inner
 //! clusters and exposes the same trait, so it drops into
@@ -25,9 +25,10 @@
 //!    does *not* read the inner clusters' loss values. It stands in for "more
 //!    replicas process more data in parallel" without asserting the merge actually
 //!    exploited replica diversity — a degenerate hierarchy of identical inner
-//!    clusters earns the same credit. A real `prime`/Psyche backend is what would
-//!    turn that credit into a genuine win; here it is the modeled reason a `k`-way
-//!    hierarchy reaches a lower loss than a single cluster at the same recipe.
+//!    clusters earns the same credit. A real external distributed-training backend
+//!    is what would turn that credit into a genuine win; here it is the modeled
+//!    reason a `k`-way hierarchy reaches a lower loss than a single cluster at the
+//!    same recipe.
 //! 2. **Cross-cluster drift.** The outer-outer sync only fires every
 //!    [`cross_sync_interval`](HierarchicalCluster::cross_sync_interval) inner
 //!    rounds. Push that interval too high and the per-cluster replicas drift apart
@@ -49,7 +50,7 @@
 //! through the closed-form hierarchical model below. No GPUs, no clock, no I/O, no
 //! `rand` — every output is byte-reproducible from the seed, so the tests assert
 //! concrete inequalities. A production adapter would replace the inner clusters
-//! with real `prime`/Psyche service instances and keep this composition intact.
+//! with real external training service instances and keep this composition intact.
 
 use std::future::Future;
 
@@ -97,8 +98,8 @@ fn pos(x: f64) -> f64 {
 /// A cluster-of-clusters: trains one recipe across `k` inner [`TrainingCluster`]s
 /// and folds their results into a single [`TrainedArtifact`]. Generic over the
 /// inner cluster type so a hierarchy of [`LocalSimCluster`](crate::LocalSimCluster)s
-/// (the in-repo stand-in) and a hierarchy of production `prime`/Psyche clusters are
-/// the same code.
+/// (the in-repo stand-in) and a hierarchy of production external backends are the
+/// same code.
 ///
 /// Because it *is* a [`TrainingCluster`], a `HierarchicalCluster` can itself be an
 /// inner cluster of a deeper hierarchy — the composition nests.

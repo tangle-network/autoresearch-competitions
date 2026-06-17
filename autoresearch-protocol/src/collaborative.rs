@@ -68,7 +68,7 @@
 //!
 //! The real distributed-training integration — the **training-blueprint / DeMo
 //! (Decoupled Momentum) engine** running across a GPU cluster — is a **SEAM**, exactly
-//! like the sandbox-runtime and Improvement-Plane seams elsewhere. There is no real
+//! like the sandbox-runtime and agent-profile seams elsewhere. There is no real
 //! GPU cluster here. The contributor that produces each delta is supplied by the
 //! caller (`make_contributor`); the verticals ship a **local deterministic stand-in**
 //! ([`autoresearch_verticals::SharedSearchContributor`]) that improves the shared

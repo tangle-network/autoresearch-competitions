@@ -347,27 +347,25 @@ mechanics):
   (here and in [`./MECHANISM.md`](./MECHANISM.md)) that its verification is the
   weakest link in the design and an open research problem (§8).
 
-### 6.6 Agent self-improvement & the Improvement-Plane
+### 6.6 Agent self-improvement & the agent-profile stand-in
 
-The substrate for *agent*-improvement Scorers is the Tangle Intelligence
-**Improvement-Plane**:
+The in-repo substrate for *agent*-improvement Scorers is a local closed-form
+**agent-profile stand-in**:
 
-- **Primitives**: `AgentProfile`; an agent-eval harness; a **replay engine** with
-  **Tier A** (full re-execution), **Tier B** (tool-mocked replay), and **Tier C**
-  (observational — *never promotes*, only flags); a **held-out gate**
-  (`minLiftCiLower` default 0.02 = 2 percentage points, plus a `costPerTaskCeiling`);
-  an **evidence ledger** of `{kind, delta, ci, n, confounded}`; and **R2
-  calibration** — replay reproduces live lift *only* under model parity + a
-  state-complete snapshot + `n ≥ 12`.
-- **Proves**: That "this agent is genuinely better" can be turned into a *certified,
-  held-out, confidence-bounded, cost-aware* claim rather than a vibe — exactly the
-  rigorous causal-lift Scorer we contrast against Eigen's single number (§6.3).
-- **Lacks**: It is a substrate, not a market — no proposer/reward/settlement layer,
-  and its replay tiers inherit confounding risk (Tier C never promotes for good
-  reason).
-- **We borrow**: This *is* our `HeldOutEval` Scorer for the agent-improvement
-  surface — the held-out gate, the evidence ledger, the replay tiers, and the R2
-  calibration discipline carry over directly (see [`./ARCHITECTURE.md`](./ARCHITECTURE.md)).
+- **Primitives**: `AgentProfile`; a modeled pass-rate harness; a **held-out gate**
+  (`minLiftCiLower` default 0.02 = 2 percentage points); an **evidence ledger** of
+  `{kind, delta, ci, n, confounded}`; and **R2 calibration** — the model reproduces
+  lift *only* under model parity + a state-complete snapshot + `n ≥ 12`.
+- **Proves**: The market mechanism — that "this agent is genuinely better" can be
+  turned into a *certified, held-out, confidence-bounded* claim rather than a vibe
+  — exactly the rigorous causal-lift Scorer we contrast against Eigen's single
+  number (§6.3).
+- **Lacks**: It is a stand-in, not a real agent evaluator — no actual task
+  execution, no model calls, no replay tiers. A real external agent evaluator plugs
+  into the same seam later.
+- **We borrow**: The held-out gate, the evidence ledger, and the calibration
+  discipline carry over directly to a future real evaluator (see
+  [`./ARCHITECTURE.md`](./ARCHITECTURE.md)).
 
 ### 6.7 MEV / decentralized compute markets
 

@@ -1,0 +1,26 @@
+[package]
+name = "autoresearch-supervisor"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+description = "The universal improvement engine: one local-search SupervisorEngine and one external-process SubprocessEngine that improve ANY artifact against ANY scorer. Every algorithmic-advancement domain collapses to writing a Scorer — the Engine is shared."
+license.workspace = true
+
+[features]
+default = []
+# The external-process backend shells out to a caller-supplied driver binary with a JSON
+# manifest and parses the returned artifact content. It is gated so the default build
+# stays a thin, deterministic shell (the in-process local-search stand-in); enabling it
+# pulls in tokio for the async process/JSON path. This crate does not ship a driver; the
+# caller must provide one.
+subprocess-backend = ["dep:tokio"]
+
+[dependencies]
+autoresearch-runtime = { path = "../autoresearch-runtime" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt", "macros", "process"], optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

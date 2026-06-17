@@ -62,7 +62,7 @@ pub enum Visibility {
 /// Knob 4 — what kind of referee computes the score.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ScorerKind {
-    /// A held-out evaluation suite (e.g. the Improvement-Plane replay engine).
+    /// A held-out evaluation suite (e.g. an agent-profile evaluator).
     HeldOutEval,
     /// A hidden reference oracle the researcher never sees (e.g. the quantum case).
     PrivateOracle,
@@ -122,7 +122,7 @@ pub enum Split {
 // ---------------------------------------------------------------------------
 
 /// A single certified measurement of an artifact on a split, with a confidence
-/// interval and the sample size behind it. Mirrors the Improvement-Plane
+/// interval and the sample size behind it. Mirrors the agent-profile stand-in
 /// evidence row (`{value, ci, n, cost}`).
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Measurement {
@@ -150,13 +150,13 @@ pub struct Lift {
     /// Upper CI bound of the delta.
     pub ci_upper: f64,
     /// Episodes behind the delta. The M1 estimator combines candidate and baseline
-    /// measurements *unpaired*; paired replay (Improvement-Plane Tier B) tightens
-    /// this CI — see the `lift` module in `autoresearch-protocol`.
+    /// measurements *unpaired*; paired replay tightens this CI — see the `lift`
+    /// module in `autoresearch-protocol`.
     pub n: u32,
 }
 
 /// The promotion gate a candidate must clear to be eligible for payout.
-/// Defaults follow the Improvement-Plane (`minLiftCiLower = 0.02`, `n >= 12`).
+/// Defaults follow the agent-profile stand-in (`minLiftCiLower = 0.02`, `n >= 12`).
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Gate {
     /// The lower CI bound of the lift must be at least this (default 0.02 = 2pp).

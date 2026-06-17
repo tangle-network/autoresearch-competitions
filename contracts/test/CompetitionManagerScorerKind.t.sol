@@ -38,7 +38,7 @@ contract CompetitionManagerScorerKindTest is Test {
 
     function test_scorer_kind_defaults_to_held_out_eval() public {
         _create();
-        // Never set => 0 (HeldOutEval), the Improvement-Plane default.
+        // Never set => 0 (HeldOutEval), the agent-profile stand-in default.
         assertEq(mgr.scorerKind(COMP), KIND_HELD_OUT_EVAL);
         assertEq(mgr.scorerKindOf(COMP), KIND_HELD_OUT_EVAL);
     }

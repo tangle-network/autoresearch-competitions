@@ -7,6 +7,8 @@ members = [
     "autoresearch-sandbox-runtime",
     "autoresearch-verticals",
     "autoresearch-training-runtime",
+    "autoresearch-training-blueprint-adapter",
+    "autoresearch-supervisor",
     "autoresearch-competitions-lib",
     "autoresearch-competitions-bin",
 ]

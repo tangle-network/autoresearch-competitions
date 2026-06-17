@@ -12,10 +12,10 @@
 //! [`LinearScorer`] and [`LocalSearchEngine`] are the **local stand-ins** for the
 //! production pieces:
 //!
-//! - `LinearScorer` stands in for the `ImprovementPlaneScorer`, which bridges to
-//!   `@tangle-network/agent-eval` and replays held-out task suites under a TEE.
-//! - `LocalSearchEngine` stands in for the `SandboxAgentLoopEngine`, which drives a
-//!   `sandbox-runtime` agent self-improvement loop.
+//! - `LinearScorer` stands in for a real agent-profile scorer, which would run a
+//!   submitted profile against held-out task suites.
+//! - `LocalSearchEngine` stands in for an external agent-loop engine, which would
+//!   drive a real self-improvement loop.
 //!
 //! Both implement the same [`Surface`]/[`Scorer`]/[`Engine`] traits the orchestrator
 //! consumes, so the production adapters drop in with no orchestrator change. The

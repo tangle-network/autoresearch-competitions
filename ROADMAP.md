@@ -32,14 +32,13 @@ the four knobs one at a time.**
 Three principles drive the order:
 
 1. **Earn the Scorer before you sell the market.** The hardest, most defensible
-   part of this system is a *trusted, attestable, anti-overfit Scorer*. We already
-   own one for the agent-improvement vertical — the **Improvement-Plane**
-   (`Surface = AgentProfile`, `Scorer = agent-eval`, held-out gate
-   `min_lift_ci_lower 0.02`, `n ≥ 12`). So the first real competition is an
-   agent-improvement bounty. We do not start by inventing a quantum oracle or a
-   distributed-training verifier; we start where the Scorer is already production
-   substrate. Every later milestone reuses the same jobs and lifecycle and only
-   swaps an interface.
+   part of this system is a *trusted, attestable, anti-overfit Scorer*. We start
+   with a local closed-form **agent-profile stand-in** (`Surface = AgentProfile`,
+   `Scorer = AgentProfileScorer`, held-out gate `min_lift_ci_lower 0.02`,
+   `n ≥ 12`). This proves the market mechanism on one box. A real external agent
+   evaluator plugs into the same seam later. We do not start by inventing a quantum
+   oracle or a distributed-training verifier. Every later milestone reuses the same
+   jobs and lifecycle and only swaps an interface.
 
 2. **Widen one knob at a time.** The four knobs (Structure, Cadence, Visibility,
    Scorer type) are orthogonal by design (SPEC §4). The roadmap flips them one per
@@ -104,12 +103,12 @@ self-eval suites E1–E7 (SPEC §10) and acceptance criteria (SPEC §9) where no
 
 | | |
 | --- | --- |
-| **Goal** | A single agent-improvement bounty runs end-to-end on **one box**: a Proposer posts, Researchers submit candidate AgentProfiles, the Referee scores on held-out via the Improvement-Plane, settlement pays the winner. This is the milestone that proves the entire thesis — pay-for-certified-outcome — works at all. Everything after widens it. |
+| **Goal** | A single agent-improvement bounty runs end-to-end on **one box**: a Proposer posts, Researchers submit candidate AgentProfiles, the Referee scores on held-out via the agent-profile stand-in, settlement pays the winner. This is the milestone that proves the entire thesis — pay-for-certified-outcome — works at all. Everything after widens it. |
 | **Knobs unlocked** | `Competitive × OneShot × Public × HeldOutEval` |
-| **Key deliverables** | • `ImprovementPlaneScorer` impl of `Scorer` (`Surface = AgentProfile`, agent-eval replay Tiers A/B/C, held-out gate `min_lift_ci_lower 0.02`, `n ≥ 12`, model parity, state-complete).<br>• `SandboxAgentLoopEngine` reference Engine (diagnose → propose-variant → backtest → promote-if-metric+regression-free) running in the agent-sandbox **cloud/instance** mode.<br>• `RewardSchedule::TerminalPrize` and `SnapshotTopK` payout paths.<br>• Jobs `CREATE_COMPETITION`, `JOIN`, `REVEAL_CANDIDATE` (commit phase stubbed/trivial here), `REPORT_SCORE`, `FINALIZE` fully wired Surface→Scorer→settlement.<br>• Self-eval **E1** (E2E lifecycle) + **E2** (anti-overfit) as runnable campaigns. |
+| **Key deliverables** | • `AgentProfileScorer` impl of `Scorer` (`Surface = AgentProfile`, closed-form pass-rate model, held-out gate `min_lift_ci_lower 0.02`, `n ≥ 12`, model parity, state-complete).<br>• `SandboxAgentLoopEngine` reference Engine (diagnose → propose-variant → backtest → promote-if-metric+regression-free) running in the agent-sandbox **cloud/instance** mode.<br>• `RewardSchedule::TerminalPrize` and `SnapshotTopK` payout paths.<br>• Jobs `CREATE_COMPETITION`, `JOIN`, `REVEAL_CANDIDATE` (commit phase stubbed/trivial here), `REPORT_SCORE`, `FINALIZE` fully wired Surface→Scorer→settlement.<br>• Self-eval **E1** (E2E lifecycle) + **E2** (anti-overfit) as runnable campaigns. |
 | **EXIT CRITERIA** | E1 passes: a full OneShot competition transitions through every state and pays the winner **to the wei** per `TerminalPrize`/`SnapshotTopK` (SPEC §9.1). E2 passes: a Researcher that overfits the dev split does **not** win — its held-out `ci.lower` < gate, no payout (SPEC §9.2). Scorer pluggability holds: settlement reads `{value, ci, cost}` and never inspects the Engine (SPEC §9.9). Reward/Cadence coherence check rejects `RecordBounty`+`OneShot` at `CREATE_COMPETITION` (SPEC §9.10). Runs on a single box (Tier 0). |
 | **Effort** | L |
-| **Dependencies** | M0; **Improvement-Plane / agent-eval** version pin (external — see §5); agent-sandbox cloud/instance mode. |
+| **Dependencies** | M0; agent-profile stand-in (local); agent-sandbox cloud/instance mode. |
 
 ### M2 — Trust hardening
 
@@ -187,7 +186,7 @@ assumes M1–M2 hardening is already in place.
 
 | Scenario | Knobs | Engine / Scorer | Passes at | Why that milestone |
 | --- | --- | --- | --- | --- |
-| **B — Public Continuous Arena** (Eigen-style) | `Competitive × Continuous × Public × HeldOutEval` | SandboxAgentLoop / Improvement-Plane | **M3** | Continuous cadence + marginal `RecordBounty`/`TimeAtTopStreaming` + public verifiable recompute land here. No privacy, no new Scorer needed → first scenario to pass. **This is the marketing flagship.** |
+| **B — Public Continuous Arena** (Eigen-style) | `Competitive × Continuous × Public × HeldOutEval` | SandboxAgentLoop / agent-profile stand-in | **M3** | Continuous cadence + marginal `RecordBounty`/`TimeAtTopStreaming` + public verifiable recompute land here. No privacy, no new Scorer needed → first scenario to pass. **This is the marketing flagship.** |
 | **C — Private Enterprise Bounty** (the business) | `Competitive × Continuous × Private × HeldOutEval` | any Engine / `HeldOutEval`–`PrivateOracle` | **M4** | Same machinery as B + the Visibility flip: TEE referee, sealed inputs, leakage bounds. Gated by the attestation gap. **This is the revenue case.** |
 | **A — Private Oracle** (quantum) | `Competitive × OneShot × Private × PrivateOracle` (+ `PrivilegedHardware`) | quantum optimizers / `PrivateOracle` + `PrivilegedHardware` | **M5** | Needs the new Scorer substrates on top of M4's privacy posture. Last to pass because it needs both the private tier *and* a privileged-hardware Referee. |
 
@@ -269,15 +268,15 @@ the **last** knob we flip.
   defer high-value private collaborative escrow until verification improves.
 - Track upstream training-blueprint verification work.
 
-### External dependency — Improvement-Plane / agent-eval versions
+### External dependency — agent evaluator (future)
 
-The M1 Scorer is the **Improvement-Plane** (agent-eval). We depend on a specific
-pinned version for: replay Tiers A/B/C semantics, the held-out gate
-(`min_lift_ci_lower 0.02`, `cost_per_task_ceiling`), and the validity guards
-(`n ≥ 12`, model parity, state-completeness). Risks: a breaking agent-eval API
-change shifts M1; gate-parameter drift changes what "improvement" means.
-**Mitigation:** pin the agent-eval version in M0, gate upgrades behind a re-run of
-E2 (anti-overfit), and treat the gate parameters as part of this repo's contract.
+The M1 Scorer is a **local agent-profile stand-in**; it does not depend on any
+external agent-eval package. Later milestones may swap in a real external agent
+evaluator behind the same `Scorer` seam. Risks: a breaking evaluator API change
+shifts the integration; gate-parameter drift changes what "improvement" means.
+**Mitigation:** keep the stand-in as the tested default, version-pin any external
+ evaluator when it lands, and treat the gate parameters as part of this repo's
+contract.
 
 ### Other dependencies (summary)
 
@@ -286,7 +285,7 @@ E2 (anti-overfit), and treat the gate parameters as part of this repo's contract
 | tnt-core 0.13 | M0 | external | Job/contract primitives, dispute/slash. |
 | sandbox-runtime L1 traits | M0 | external | Trait surface to refine `Surface`/`Scorer`/`Engine` against. |
 | agent-sandbox `PROVISION`/`DEPROVISION` | M0+ | composed-on | Inherited lifecycle jobs; cloud/instance/tee-instance modes. |
-| Improvement-Plane / agent-eval (pinned) | M1 | external | The M1 Scorer; version-pinned. |
+| External agent evaluator | M1+ | future external | Optional swap for `AgentProfileScorer`; not required today. |
 | Validator committee + EIP-712 | M2 | internal/infra | 2-of-3 default, threshold ≥ 50. |
 | Keeper/cron for `TICK` | M3 | infra | Drives Continuous cadence + streaming. |
 | Attestation-gap hardening | M4, M5 | KNOWN GAP | See Risk 1. |
@@ -319,7 +318,7 @@ combine, each a tracked deliverable:
 | **Collaborative mode** | The `Collaborative` Structure knob + DeMo engine + contribution-share payout — pooled compute on one shared artifact, not just rival rankings. | M6 |
 | **Private / enterprise** | The `Private` Visibility tier: TEE referee, sealed inputs, leakage-bounded scoring — paid bounties where data never leaves the enclave. | M4 |
 | **Pluggable engines** | Engine-agnostic protocol (SandboxAgentLoop / DeMoTraining / BlackBoxOptimizer / HumanSubmission) — the protocol never inspects how a candidate was produced. | M1 (proven), M6 (breadth) |
-| **Causal-lift Scorer** | The Improvement-Plane: certified causal lift with a held-out gate (`min_lift_ci_lower 0.02`, `n ≥ 12`), not a raw leaderboard number — anti-overfit by construction. | M1 |
+| **Causal-lift Scorer** | The agent-profile stand-in: certified causal lift with a held-out gate (`min_lift_ci_lower 0.02`, `n ≥ 12`), not a raw leaderboard number — anti-overfit by construction. A real external evaluator plugs into the same seam. | M1 |
 
 The one-line pitch the roadmap delivers: *the public arena is the ad; the private
 enterprise bounty is the product; both ship from one primitive by flipping the

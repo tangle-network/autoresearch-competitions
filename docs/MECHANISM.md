@@ -185,7 +185,7 @@ it against statistical probing.
 ### The gate
 
 A candidate is paid only if it clears **all three** conditions. These mirror the
-Improvement-Plane held-out gate.
+agent-profile stand-in held-out gate.
 
 1. **`minLiftCiLower` — statistically real lift.** The improvement is measured
    on the **lower bound of the confidence interval**, not the point estimate:
@@ -216,10 +216,10 @@ reverse-engineered through repeated scoring.
 | --- | --- | --- |
 | **Private held-out** | Settlement split never leaves the Referee; Researchers see only their own scores. | SPEC §2; Kaggle private test set. |
 | **Walk-forward** | For time-series / sequential surfaces, evaluate on data strictly after the training window, advancing the window each epoch — so you can't tune to a fixed test. | trading blueprint walk-forward holdout. |
-| **Held-out rotation** | Periodically rotate the held-out subset so a Researcher who slowly fits to it via score feedback loses that fit when it rotates. | PRIVACY rotation; Improvement-Plane. |
+| **Held-out rotation** | Periodically rotate the held-out subset so a Researcher who slowly fits to it via score feedback loses that fit when it rotates. | PRIVACY rotation; agent-profile stand-in. |
 | **Submission rate-limits** | Cap scoring queries per Researcher per epoch. Each query leaks ≤ one CI's worth of signal; capping queries caps total leakage and probing. | Kaggle submission limits; PRIVACY. |
 | **CI not raw value** | Return `(value, ci)`, not raw per-example outputs. The Researcher learns "how good," not "on which examples," collapsing the leakage channel. | SPEC `Score`; PRIVACY. |
-| **`n ≥ 12` validity guard** | A score on fewer than 12 samples is not eligible to settle — too noisy to gate on. | Improvement-Plane. |
+| **`n ≥ 12` validity guard** | A score on fewer than 12 samples is not eligible to settle — too noisy to gate on. | agent-profile stand-in. |
 
 Together these turn "fit the test set" into a bounded, expensive, and
 ultimately self-defeating strategy. Quantitative leakage bounds (how many

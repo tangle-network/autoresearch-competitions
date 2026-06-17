@@ -79,7 +79,7 @@ autoresearch-competitions/
 │   ├── engine-blackbox-opt/            # BlackBoxOptimizerEngine
 │   └── engine-human-submission/        # HumanSubmissionEngine
 ├── scorers/                            # (proposed, NEW) Scorer adapter crates
-│   ├── scorer-improvement-plane/       # ImprovementPlaneScorer (agent-eval)
+│   ├── scorer-agent-profile/           # AgentProfileScorer (local stand-in)
 │   ├── scorer-private-oracle/          # PrivateOracleScorer
 │   ├── scorer-privileged-hw/           # PrivilegedHardwareScorer (QPU/rig)
 │   └── scorer-human-panel/             # HumanPanelScorer
@@ -235,7 +235,7 @@ pub struct Candidate {
 ```
 
 ```rust
-// autoresearch-runtime/src/evidence.rs    (proposed) — agent-eval evidence ledger
+// autoresearch-runtime/src/evidence.rs    (proposed) — scorer evidence ledger
 pub struct EvidenceEntry {
     pub kind: String,   // e.g. "replay_tier_b", "held_out_gate"
     pub delta: f64, pub ci: (f64, f64), pub n: u32, pub confounded: bool,
@@ -378,18 +378,19 @@ and returns the emitted artifact; the protocol never inspects the loop. Wiring:
 the sidecar writes candidate artifacts to its store, the Researcher submits via
 `COMMIT/REVEAL`.
 
-**ImprovementPlaneScorer adapter** (`scorers/scorer-improvement-plane`). Adapts
-Tangle Intelligence Improvement-Plane / agent-eval. The contract:
+**AgentProfileScorer adapter** (`scorers/scorer-agent-profile`). Local closed-form
+stand-in for an agent evaluator. The contract:
 
-- *In:* `Surface::Target` (an applied AgentProfile artifact) + `Split` + the
-  sealed held-out eval-suite ref.
-- *Process:* run agent-eval, consuming `EvalRunEvent` / `TraceSpanEvent` streams;
-  replay Tier A (cached) / B (re-run tools) / C (full live); apply the held-out
-  gate (`min_lift_ci_lower 0.02`, `cost_per_task_ceiling`); build the evidence
-  ledger (`{kind, delta, ci, n, confounded}`).
+- *In:* `Surface::Target` (an applied AgentProfile artifact) + `Split`.
+- *Process:* model pass-rate dynamics from skill/prompt/tool/memory/overfit knobs;
+  apply the held-out gate (`min_lift_ci_lower 0.02`); build the evidence ledger
+  (`{kind, delta, ci, n, confounded}`).
 - *Out:* `Score { value, ci, cost, diagnostics, n }` + validity verdict
   (`n ≥ 12` ∧ model-parity ∧ state-complete). Diagnostics redacted before they
   reach a Researcher.
+
+A real external agent evaluator can later replace this adapter behind the same
+`Scorer` seam.
 
 **DeMoTrainingEngine dispatch** (`engines/engine-demo-training`). For
 `Collaborative` competitions, dispatch to the training-blueprint's
@@ -449,7 +450,7 @@ mapping(uint64 => mapping(address => uint256))  stake;         // Escrow
 | `entrants` | competition_id, researcher, sandbox_id, stake, joined_at | JOIN registry |
 | `candidates` | competition_id, researcher, epoch, commit_hash, artifact_hash, salt, revealed_at | commit-reveal tracking |
 | `scores` | competition_id, candidate_hash, value, ci_lower, ci_upper, cost, n, attestation_hash, certified_at | Referee output cache |
-| `evidence_ledger` | competition_id, candidate_hash, kind, delta, ci, n, confounded | agent-eval evidence (§2) |
+| `evidence_ledger` | competition_id, candidate_hash, kind, delta, ci, n, confounded | scorer evidence (§2) |
 | `query_log` | competition_id, researcher, split, ts | leakage rate-limit (Private, SPEC §9.5) |
 | `payouts` | competition_id, researcher, epoch, amount, schedule_kind, tx_hash | settlement audit |
 | `disputes` | competition_id, candidate_hash, challenger, stake, rescore_json, outcome | CHALLENGE trail |
@@ -580,9 +581,10 @@ the classic contest path, end to end, with the agent Scorer. Ordered:
    `~/code/ai-trading-blueprint/contracts/src/blueprints/TradingBlueprint.sol`.
 6. **Wire CREATE→JOIN→COMMIT→REVEAL→REPORT_SCORE→SETTLE** in lib handlers against
    on-chain.rs (model trading `on_chain.rs`). Integration test the full OneShot path.
-7. **ImprovementPlaneScorer + referee-lib.** Run agent-eval on an applied
-   AgentProfile, emit `Score`+CI, build evidence ledger, commit structural
-   attestation hash. Wire `report_score` to it.
+7. **AgentProfileScorer + referee-lib.** Score an applied AgentProfile with the
+   local closed-form stand-in, emit `Score`+CI, build evidence ledger, commit
+   structural attestation hash. Wire `report_score` to it. A real external agent
+   evaluator replaces this adapter later.
 8. **SandboxAgentLoopEngine.** Drive one sidecar agent-loop iteration via domain
    API `:9100`; emit a candidate artifact. Model:
    `~/code/ai-agent-sandbox-blueprint` sidecar.
