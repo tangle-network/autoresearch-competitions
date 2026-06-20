@@ -2,7 +2,7 @@
 //! pays only for a proof a held-out checker **accepts** and that is strictly
 //! **shorter** than the baseline.
 //!
-//! Four researchers each drive the *same* universal [`SupervisorEngine`] — they
+//! Four researchers each drive the *same* generic [`GenericEngine`] — they
 //! differ only by their starting tactic vector, search seed, budget, and step size,
 //! NOT by a different engine. Each searches the tactic-vector encoding to maximise
 //! its dev-checker score; the market then re-checks every produced proof on the
@@ -21,7 +21,7 @@
 //!
 //! Like `e2e_distributed_training` this is fully deterministic (no Lean/Coq/kernel),
 //! so it runs in CI rather than being `#[ignore]`d. It proves the *market mechanism
-//! around delegated proving*: one universal engine across researchers, a binary
+//! around delegated proving*: one generic engine across researchers, a binary
 //! accept/reject checker, held-out re-scoring of a delegated proof, and the promotion
 //! gate refusing invalid or over-long proofs.
 
@@ -29,7 +29,7 @@ use autoresearch_protocol::{CompetitionConfig, ResearcherRun, run_oneshot_compet
 use autoresearch_runtime::reward::{RewardSchedule, total_wei};
 use autoresearch_runtime::traits::Scorer;
 use autoresearch_runtime::types::{Cadence, Gate, Knobs, ScorerKind, Split, Structure, Visibility};
-use autoresearch_supervisor::{GenericArtifact, GenericSurface, SupervisorEngine};
+use autoresearch_generic_engine::{GenericArtifact, GenericSurface, GenericEngine};
 use autoresearch_verticals::theorem_proving::{
     ProofScorer, TACTIC_DIM, VALID_BONUS, baseline_proof, proof_at,
 };
@@ -146,7 +146,7 @@ async fn market_certifies_valid_short_proofs_and_gates_invalid_ones() {
         knobs: knobs(),
     };
 
-    // Every researcher drives the SAME universal SupervisorEngine; they differ only
+    // Every researcher drives the SAME generic GenericEngine; they differ only
     // by start point, seed, budget, and step.
     let scorer_for_engine = scorer;
     let outcome = run_oneshot_competitive(
@@ -158,7 +158,7 @@ async fn market_certifies_valid_short_proofs_and_gates_invalid_ones() {
         |run: &ResearcherRun| {
             let name = run.researcher.as_str();
             let (budget, step) = budget_step_for(name);
-            SupervisorEngine::new(
+            GenericEngine::new(
                 run.researcher.clone(),
                 start_for(name),
                 scorer_for_engine,
@@ -237,7 +237,7 @@ async fn market_certifies_valid_short_proofs_and_gates_invalid_ones() {
     for bad in &gated_out {
         let start = start_for(bad);
         let (budget, step) = budget_step_for(bad);
-        let produced = SupervisorEngine::new(*bad, start, scorer, seed_for(bad))
+        let produced = GenericEngine::new(*bad, start, scorer, seed_for(bad))
             .with_budget(budget)
             .with_step(step)
             .pipe_produce()
@@ -261,7 +261,7 @@ trait PipeProduce {
     async fn pipe_produce(self) -> GenericArtifact;
 }
 
-impl<Sc> PipeProduce for SupervisorEngine<Sc>
+impl<Sc> PipeProduce for GenericEngine<Sc>
 where
     Sc: Scorer<Artifact = GenericArtifact> + Clone + Send + Sync,
 {

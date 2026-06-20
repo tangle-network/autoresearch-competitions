@@ -1,14 +1,17 @@
-//! # autoresearch-supervisor — the universal improvement engine
+//! # autoresearch-generic-engine — the generic fallback improvement engine
 //!
-//! One `Engine` that improves **any** artifact against **any** [`Scorer`], so a new
-//! algorithmic-advancement domain is just a new scorer — never a new engine. This is
-//! the generalization that bounds the blueprint's maintenance: the *hard, reusable*
-//! part (how to drive a long-horizon improvement search) lives here once; domains
-//! differ only in *how "better" is measured*.
+//! The market is agnostic to *how* a candidate is produced: it speaks to any
+//! [`Engine`] through one trait (`produce -> Artifact`), and that trait is where the
+//! universality lives. This crate is the **generic fallback** `Engine` for domains
+//! whose artifact is expressible as a numeric encoding or a caller-supplied driver
+//! — used by the program-superopt / solver / theorem-proving / agent / forecasting
+//! verticals. Domains with richer structure get their own `Engine` (distributed-
+//! training, for example, has recipe-shaped knobs a numeric search cannot represent);
+//! they are peers behind the same trait, not superseded by this one.
 //!
 //! ## Two interchangeable backends behind one trait
 //!
-//! - [`SupervisorEngine`] — the always-available, deterministic **stand-in**: a
+//! - [`GenericEngine`] — the always-available, deterministic **stand-in**: a
 //!   seeded local search that proposes candidate [`GenericArtifact`]s and keeps the
 //!   ones the dev [`Scorer`] rewards. No `rand`, no clock, no I/O, so every vertical's
 //!   CI proof is byte-reproducible. This is what the program-superopt / solver /
@@ -40,7 +43,7 @@ use autoresearch_runtime::traits::{
 use autoresearch_runtime::types::{ArtifactRef, Split};
 use serde::{Deserialize, Serialize};
 
-// --- The universal artifact -------------------------------------------------
+// --- The generic artifact --------------------------------------------------
 
 /// What kind of thing is being improved. The market is agnostic to this — it only
 /// tags the artifact for provenance and lets the real backend pick a domain prompt.
@@ -64,9 +67,9 @@ pub enum ArtifactKind {
     Text,
 }
 
-/// The universal artifact every vertical shares. It carries two representations:
+/// The generic artifact every vertical shares. It carries two representations:
 ///
-/// - `params` — a numeric encoding the deterministic [`SupervisorEngine`] searches
+/// - `params` — a numeric encoding the deterministic [`GenericEngine`] searches
 ///   and a domain [`Scorer`] decodes into its metric. This is what makes one engine
 ///   work across every domain in CI.
 /// - `content` — the real artifact text (source, proof, prompt, profile) an
@@ -97,7 +100,7 @@ impl GenericArtifact {
     }
 }
 
-// --- The universal surface --------------------------------------------------
+// --- The generic surface --------------------------------------------------
 
 /// The surface for [`GenericArtifact`]: a finite, all-finite parameter vector with
 /// full-replacement deltas. Every vertical can reuse this — a domain only needs its
@@ -182,19 +185,19 @@ impl Lcg {
     }
 }
 
-// --- The universal engine (deterministic stand-in) --------------------------
+// --- The generic engine (deterministic stand-in) ---------------------------
 
 /// Number of search proposals the stand-in evaluates per produce, unless overridden.
-/// A proxy for the live supervisor's long-horizon improvement steps.
+/// A proxy for the live engine's long-horizon improvement steps.
 pub const DEFAULT_BUDGET: usize = 256;
 
-/// The universal improvement engine, deterministic stand-in form: a seeded local
+/// The generic improvement engine, deterministic stand-in form: a seeded local
 /// search that proposes [`GenericArtifact`] candidates and keeps the ones the dev
 /// [`Scorer`] rewards. Generic over the dev scorer, so the *same* engine improves a
 /// program, a solver, a proof, an agent, or a forecaster — each is just a different
 /// `Sc`. The external-process backend is [`SubprocessEngine`].
 #[derive(Clone, Debug)]
-pub struct SupervisorEngine<Sc> {
+pub struct GenericEngine<Sc> {
     researcher: String,
     start: GenericArtifact,
     dev_scorer: Sc,
@@ -204,7 +207,7 @@ pub struct SupervisorEngine<Sc> {
     sealed: bool,
 }
 
-impl<Sc> SupervisorEngine<Sc> {
+impl<Sc> GenericEngine<Sc> {
     /// Improve `start` by searching for higher dev score. `dev_scorer` is the
     /// researcher-visible signal (scored on [`Split::Dev`]); the Referee re-scores the
     /// produced artifact on held-out. `seed` makes the whole search reproducible.
@@ -255,7 +258,7 @@ impl<Sc> SupervisorEngine<Sc> {
     }
 }
 
-impl<Sc> Engine for SupervisorEngine<Sc>
+impl<Sc> Engine for GenericEngine<Sc>
 where
     Sc: Scorer<Artifact = GenericArtifact> + Clone + Send + Sync,
 {
@@ -312,17 +315,17 @@ where
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SubprocessManifest {
     pub kind: ArtifactKind,
-    /// The baseline artifact `content` the supervisor improves from.
+    /// The baseline artifact `content` the engine improves from.
     pub baseline_content: String,
-    /// Long-horizon step budget for the supervisor.
+    /// Long-horizon step budget for the engine.
     pub budget_steps: usize,
-    /// Optional command the supervisor shells to for the dev-eval signal (the
+    /// Optional command the engine shells to for the dev-eval signal (the
     /// researcher-visible scorer); `None` lets the runtime use its own eval.
     pub dev_eval_cmd: Option<String>,
 }
 
 /// An external-process engine that shells out to a caller-supplied driver binary.
-/// Implements the same `Engine` as [`SupervisorEngine`], so it is a drop-in for the
+/// Implements the same `Engine` as [`GenericEngine`], so it is a drop-in for the
 /// deterministic stand-in.
 ///
 /// **Honest status:** this is a generic subprocess seam, not an integration with any
@@ -491,13 +494,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn supervisor_improves_any_scorer() {
+    async fn generic_engine_improves_any_scorer() {
         let target = vec![1.0, -2.0, 0.5, 1.5];
         let scorer = QuadraticScorer {
             target: target.clone(),
         };
         let start = GenericArtifact::baseline(ArtifactKind::Config, target.len(), "baseline");
-        let engine = SupervisorEngine::new("r", start.clone(), scorer.clone(), 7).with_budget(2000);
+        let engine = GenericEngine::new("r", start.clone(), scorer.clone(), 7).with_budget(2000);
 
         let start_v = scorer.score(&start, Split::HeldOut).await.unwrap().value;
         let produced = engine.produce(&ctx()).await.unwrap();
@@ -505,7 +508,7 @@ mod tests {
 
         assert!(
             produced_v > start_v + 1.0,
-            "the universal engine must improve the artifact: {start_v} -> {produced_v}"
+            "the generic engine must improve the artifact: {start_v} -> {produced_v}"
         );
         // Never worse than where it started (keeps the running best).
         assert!(produced_v >= start_v);
@@ -517,7 +520,7 @@ mod tests {
             target: vec![1.0, 2.0, 3.0],
         };
         let start = GenericArtifact::baseline(ArtifactKind::Program, 3, "s");
-        let mk = || SupervisorEngine::new("r", start.clone(), scorer.clone(), 42).with_budget(500);
+        let mk = || GenericEngine::new("r", start.clone(), scorer.clone(), 42).with_budget(500);
         let a = mk().produce(&ctx()).await.unwrap();
         let b = mk().produce(&ctx()).await.unwrap();
         assert_eq!(a, b, "same seed must reproduce the same artifact");
@@ -566,11 +569,11 @@ mod tests {
         let scorer = QuadraticScorer { target: vec![0.0] };
         let start = GenericArtifact::baseline(ArtifactKind::Config, 1, "s");
         assert!(
-            !SupervisorEngine::new("r", start.clone(), scorer.clone(), 1)
+            !GenericEngine::new("r", start.clone(), scorer.clone(), 1)
                 .provides_sealed_isolation()
         );
         assert!(
-            SupervisorEngine::new("r", start, scorer, 1)
+            GenericEngine::new("r", start, scorer, 1)
                 .sealed(true)
                 .provides_sealed_isolation()
         );

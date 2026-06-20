@@ -1,8 +1,8 @@
 //! End-to-end: the autoresearch market runs an **agent-profile** competition and pays
 //! only for certified, GENERALIZING lift.
 //!
-//! Several researchers improve an agent profile against the SAME universal
-//! [`SupervisorEngine`] — the deterministic stand-in for a recursive-self-improvement
+//! Several researchers improve an agent profile against the SAME generic
+//! [`GenericEngine`] — the deterministic stand-in for a recursive-self-improvement
 //! loop. They differ ONLY by their start profile, their search budget, and their seed
 //! — not by a different engine. Every engine maximizes the researcher-visible **dev**
 //! task-suite pass-rate; the market's Referee then re-scores each produced profile on
@@ -23,7 +23,7 @@ use autoresearch_protocol::{CompetitionConfig, ResearcherRun, run_oneshot_compet
 use autoresearch_runtime::reward::{RewardSchedule, total_wei};
 use autoresearch_runtime::traits::Scorer;
 use autoresearch_runtime::types::{Cadence, Gate, Knobs, ScorerKind, Split, Structure, Visibility};
-use autoresearch_supervisor::{GenericArtifact, GenericSurface, SupervisorEngine};
+use autoresearch_generic_engine::{GenericArtifact, GenericSurface, GenericEngine};
 use autoresearch_verticals::agent_improvement::{
     AgentProfileScorer, baseline_profile, profile_from_knobs,
 };
@@ -41,7 +41,7 @@ fn knobs() -> Knobs {
 }
 
 /// One researcher hypothesis: a start profile + a search budget. All four drive the
-/// SAME `SupervisorEngine`; they differ only in where they start, how hard they search
+/// SAME `GenericEngine`; they differ only in where they start, how hard they search
 /// the dev signal, and their seed.
 struct Hypothesis {
     /// Raw (pre-squash) start knobs: skill, prompt, tool, memory, overfit.
@@ -142,13 +142,13 @@ async fn market_improves_agent_on_heldout() {
         knobs: knobs(),
     };
 
-    // The SAME universal engine for every researcher. Researchers differ only by start
+    // The SAME generic engine for every researcher. Researchers differ only by start
     // profile, search budget, and seed — never by a different engine. The engine
     // searches `params` to MAXIMISE the dev scorer (the researcher-visible signal).
     let outcome =
         run_oneshot_competitive(&cfg, &surface, &scorer, &baseline, &researchers, |run| {
             let h = hypothesis_for(&run.researcher);
-            SupervisorEngine::new(
+            GenericEngine::new(
                 run.researcher.clone(),
                 start_artifact(&run.researcher),
                 scorer, // dev scorer; the Referee re-scores produced artifacts on held-out
@@ -165,7 +165,7 @@ async fn market_improves_agent_on_heldout() {
     for name in names {
         let h = hypothesis_for(name);
         let seed = (names.iter().position(|n| *n == name).unwrap() as u64) + 1;
-        let engine = SupervisorEngine::new(name, start_artifact(name), scorer, seed)
+        let engine = GenericEngine::new(name, start_artifact(name), scorer, seed)
             .with_budget(h.budget)
             .with_step(0.5);
         use autoresearch_runtime::traits::Engine;

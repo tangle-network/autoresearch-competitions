@@ -40,19 +40,19 @@
 //! mechanism around a delegated agent eval**: held-out re-scoring of a submitted
 //! profile, a Wilson-CI gate refusing plausible-but-overfit profiles, ranking, and
 //! conserved payouts. A real external agent evaluator backend can drop in behind the same
-//! `Engine`/`Scorer` seams unchanged — the universal
-//! [`SupervisorEngine`](autoresearch_supervisor::SupervisorEngine) searches the same
+//! `Engine`/`Scorer` seams unchanged — the generic
+//! [`GenericEngine`](autoresearch_generic_engine::GenericEngine) searches the same
 //! `params` encoding this scorer decodes.
 
 use std::future::Future;
 
 use autoresearch_runtime::traits::{Scorer, ScorerError};
 use autoresearch_runtime::types::{Measurement, Split};
-use autoresearch_supervisor::{ArtifactKind, GenericArtifact};
+use autoresearch_generic_engine::{ArtifactKind, GenericArtifact};
 
 // --- Profile encoding (the searchable params vector) ------------------------
 //
-// The `GenericArtifact::params` the universal engine searches map 1:1 onto the four
+// The `GenericArtifact::params` the generic engine searches map 1:1 onto the four
 // agent-profile knobs plus a dev-suite overfit knob. Each is a real number the engine
 // perturbs; the scorer squashes it into its natural range. Index order is the public
 // contract between the engine's search and this scorer's decode.

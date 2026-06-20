@@ -11,11 +11,11 @@
 //! ranks, and pays. **Delegating the search never delegates the trust** — only the
 //! held-out objective decides payment.
 //!
-//! # The universal engine, not a bespoke one
+//! # The generic engine, not a bespoke one
 //!
 //! This vertical does NOT ship its own engine. It plugs a domain [`Scorer`] for
-//! [`GenericArtifact`] into the *same* deterministic [`SupervisorEngine`] every other
-//! universal-engine vertical drives: the engine searches the artifact's `params`
+//! [`GenericArtifact`] into the *same* deterministic [`GenericEngine`] every other
+//! generic-engine vertical drives: the engine searches the artifact's `params`
 //! vector (the heuristic weights) to MAXIMISE the researcher-visible dev objective,
 //! and the e2e re-scores the produced weights on held-out. A researcher is just a
 //! `(seed, budget, step, start)` configuration of that one engine.
@@ -35,7 +35,7 @@ use std::future::Future;
 
 use autoresearch_runtime::traits::{Scorer, ScorerError};
 use autoresearch_runtime::types::{Measurement, Split};
-use autoresearch_supervisor::{ArtifactKind, GenericArtifact};
+use autoresearch_generic_engine::{ArtifactKind, GenericArtifact};
 
 // --- Solver-objective constants ---------------------------------------------
 //

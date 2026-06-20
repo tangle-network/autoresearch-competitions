@@ -1,7 +1,7 @@
 //! End-to-end: the autoresearch market runs a **program-superoptimization**
 //! competition and pays only for a certified, generalizing, *correct* speedup.
 //!
-//! Every researcher drives the **same universal** [`SupervisorEngine`] — the one
+//! Every researcher drives the **same generic** [`GenericEngine`] — the one
 //! seeded local search shared across all verticals. They differ only by **seed,
 //! search budget, step size, and start point**, never by a different engine. The
 //! engine searches the recipe encoding (`[unroll, vectorize, cache_block]` in
@@ -14,7 +14,7 @@
 //! *incorrectness* region with too little budget to escape stays a fast-but-wrong
 //! program and is refused. This is fully deterministic (no compiler, no CPU timing),
 //! so it runs in CI rather than being `#[ignore]`d. It proves the *market mechanism
-//! around superoptimization*: one universal engine, held-out re-scoring of a delegated
+//! around superoptimization*: one generic engine, held-out re-scoring of a delegated
 //! recipe, a correctness constraint refusing fast-but-wrong programs, and the gate
 //! refusing speedups that do not generalize.
 
@@ -22,7 +22,7 @@ use autoresearch_protocol::{CompetitionConfig, ResearcherRun, run_oneshot_compet
 use autoresearch_runtime::reward::{RewardSchedule, total_wei};
 use autoresearch_runtime::traits::Scorer;
 use autoresearch_runtime::types::{Cadence, Gate, Knobs, ScorerKind, Split, Structure, Visibility};
-use autoresearch_supervisor::{ArtifactKind, GenericArtifact, GenericSurface, SupervisorEngine};
+use autoresearch_generic_engine::{ArtifactKind, GenericArtifact, GenericSurface, GenericEngine};
 use autoresearch_verticals::program_superopt::{ProgramScorer, RECIPE_DIM, baseline_artifact};
 
 const POOL_WEI: u128 = 1_000_000;
@@ -38,14 +38,14 @@ fn knobs() -> Knobs {
 }
 
 /// A researcher hypothesis: the start point and search budget/step that parameterize
-/// the *same* universal [`SupervisorEngine`].
+/// the *same* generic [`GenericEngine`].
 struct Hypothesis {
     start: GenericArtifact,
     budget: usize,
     step: f64,
 }
 
-/// Map a researcher name to how it parameterizes the universal engine. Note: NONE of
+/// Map a researcher name to how it parameterizes the generic engine. Note: NONE of
 /// these returns a different engine — they only change start/budget/step/seed.
 fn hypothesis_for(name: &str) -> Hypothesis {
     match name {
@@ -139,14 +139,14 @@ async fn market_improves_program_superopt_on_heldout() {
         knobs: knobs(),
     };
 
-    // EVERY researcher drives the SAME universal SupervisorEngine; they differ only by
+    // EVERY researcher drives the SAME generic GenericEngine; they differ only by
     // start / budget / step / seed (the dev scorer is the researcher-visible signal it
     // hill-climbs on Split::Dev). The Referee re-scores the produced recipe on held-out.
     let surface = GenericSurface;
     let outcome =
         run_oneshot_competitive(&cfg, &surface, &scorer, &baseline, &researchers, |run| {
             let h = hypothesis_for(&run.researcher);
-            SupervisorEngine::new(run.researcher.clone(), h.start, scorer, run.seed)
+            GenericEngine::new(run.researcher.clone(), h.start, scorer, run.seed)
                 .with_budget(h.budget)
                 .with_step(h.step)
         })
@@ -214,7 +214,7 @@ async fn market_improves_program_superopt_on_heldout() {
     // held-out speedup directly to confirm the gate certified a real, correct recipe.
     let winner_engine = {
         let h = hypothesis_for("deep-search");
-        SupervisorEngine::new("deep-search", h.start, scorer, 1)
+        GenericEngine::new("deep-search", h.start, scorer, 1)
             .with_budget(h.budget)
             .with_step(h.step)
     };
