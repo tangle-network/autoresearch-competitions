@@ -18,11 +18,11 @@
 //! recipe, a correctness constraint refusing fast-but-wrong programs, and the gate
 //! refusing speedups that do not generalize.
 
+use autoresearch_generic_engine::{ArtifactKind, GenericArtifact, GenericEngine, GenericSurface};
 use autoresearch_protocol::{CompetitionConfig, ResearcherRun, run_oneshot_competitive};
 use autoresearch_runtime::reward::{RewardSchedule, total_wei};
 use autoresearch_runtime::traits::Scorer;
 use autoresearch_runtime::types::{Cadence, Gate, Knobs, ScorerKind, Split, Structure, Visibility};
-use autoresearch_generic_engine::{ArtifactKind, GenericArtifact, GenericSurface, GenericEngine};
 use autoresearch_verticals::program_superopt::{ProgramScorer, RECIPE_DIM, baseline_artifact};
 
 const POOL_WEI: u128 = 1_000_000;

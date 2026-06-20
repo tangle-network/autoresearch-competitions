@@ -19,11 +19,11 @@
 //! held-out re-scoring of a submitted profile, the Wilson-CI gate refusing
 //! plausible-but-overfit profiles, ranking, and conserved payouts.
 
+use autoresearch_generic_engine::{GenericArtifact, GenericEngine, GenericSurface};
 use autoresearch_protocol::{CompetitionConfig, ResearcherRun, run_oneshot_competitive};
 use autoresearch_runtime::reward::{RewardSchedule, total_wei};
 use autoresearch_runtime::traits::Scorer;
 use autoresearch_runtime::types::{Cadence, Gate, Knobs, ScorerKind, Split, Structure, Visibility};
-use autoresearch_generic_engine::{GenericArtifact, GenericSurface, GenericEngine};
 use autoresearch_verticals::agent_improvement::{
     AgentProfileScorer, baseline_profile, profile_from_knobs,
 };

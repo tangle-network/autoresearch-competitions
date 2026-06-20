@@ -6,9 +6,9 @@
 //! adding a new algorithmic-advancement domain means writing a scorer, never an
 //! engine.
 
+use autoresearch_generic_engine::{GenericArtifact, GenericEngine};
 use autoresearch_runtime::traits::{Engine, EngineContext, Scorer};
 use autoresearch_runtime::types::{ArtifactRef, Split};
-use autoresearch_generic_engine::{GenericArtifact, GenericEngine};
 
 fn ctx() -> EngineContext {
     EngineContext {

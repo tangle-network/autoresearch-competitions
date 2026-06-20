@@ -25,11 +25,11 @@
 //! accept/reject checker, held-out re-scoring of a delegated proof, and the promotion
 //! gate refusing invalid or over-long proofs.
 
+use autoresearch_generic_engine::{GenericArtifact, GenericEngine, GenericSurface};
 use autoresearch_protocol::{CompetitionConfig, ResearcherRun, run_oneshot_competitive};
 use autoresearch_runtime::reward::{RewardSchedule, total_wei};
 use autoresearch_runtime::traits::Scorer;
 use autoresearch_runtime::types::{Cadence, Gate, Knobs, ScorerKind, Split, Structure, Visibility};
-use autoresearch_generic_engine::{GenericArtifact, GenericSurface, GenericEngine};
 use autoresearch_verticals::theorem_proving::{
     ProofScorer, TACTIC_DIM, VALID_BONUS, baseline_proof, proof_at,
 };

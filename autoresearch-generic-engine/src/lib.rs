@@ -559,7 +559,9 @@ mod tests {
         let engine = SubprocessEngine::new("r", "node", manifest);
         let err = engine.produce(&ctx()).await.unwrap_err();
         match err {
-            EngineError::Backend(m) => assert!(m.contains("subprocess-backend feature not enabled")),
+            EngineError::Backend(m) => {
+                assert!(m.contains("subprocess-backend feature not enabled"))
+            }
             other => panic!("expected Backend error, got {other:?}"),
         }
     }
@@ -569,8 +571,7 @@ mod tests {
         let scorer = QuadraticScorer { target: vec![0.0] };
         let start = GenericArtifact::baseline(ArtifactKind::Config, 1, "s");
         assert!(
-            !GenericEngine::new("r", start.clone(), scorer.clone(), 1)
-                .provides_sealed_isolation()
+            !GenericEngine::new("r", start.clone(), scorer.clone(), 1).provides_sealed_isolation()
         );
         assert!(
             GenericEngine::new("r", start, scorer, 1)

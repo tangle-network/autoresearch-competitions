@@ -33,9 +33,9 @@
 
 use std::future::Future;
 
+use autoresearch_generic_engine::{ArtifactKind, GenericArtifact};
 use autoresearch_runtime::traits::{Scorer, ScorerError};
 use autoresearch_runtime::types::{Measurement, Split};
-use autoresearch_generic_engine::{ArtifactKind, GenericArtifact};
 
 // --- Solver-objective constants ---------------------------------------------
 //
