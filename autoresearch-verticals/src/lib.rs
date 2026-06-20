@@ -24,6 +24,8 @@
 
 #![forbid(unsafe_code)]
 
+mod util;
+
 pub mod agent_improvement;
 pub mod combinatorial_solver;
 pub mod config_opt;

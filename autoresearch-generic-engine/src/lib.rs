@@ -61,8 +61,6 @@ pub enum ArtifactKind {
     Config,
     /// A forecasting / statistical model.
     Forecast,
-    /// A prompt or retrieval pipeline.
-    Prompt,
     /// Anything else.
     Text,
 }

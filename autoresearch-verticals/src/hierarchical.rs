@@ -89,9 +89,7 @@ const DRIFT_REPLICA_SCALE: f64 = 0.30;
 const CLUSTER_SEED_STRIDE: u64 = 0x9E37_79B9_7F4A_7C15;
 
 /// `max(0, x)` — the positive part, for the one-sided drift penalty.
-fn pos(x: f64) -> f64 {
-    x.max(0.0)
-}
+use crate::util::pos;
 
 // --- Hierarchical cluster ---------------------------------------------------
 

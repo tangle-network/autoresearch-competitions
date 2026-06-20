@@ -85,15 +85,7 @@ const SHIFT_DIR: [f64; WEIGHT_DIM] = [1.0, 1.0, -1.0, 1.0, -1.0, 1.0];
 /// A splitmix64 finalizer mapped to a uniform `f64` in `[-1, 1)`. Deterministic from
 /// its input mix word — no `rand`, no clock — so every measurement is byte-reproducible,
 /// which is what lets the e2e assert concrete lift.
-fn jitter(mix: u64) -> f64 {
-    let mut z = mix.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    z ^= z >> 31;
-    let bits = z >> 11; // top 53 bits
-    let unit = (bits as f64) / ((1u64 << 53) as f64);
-    2.0 * unit - 1.0
-}
+use crate::util::jitter;
 
 /// A stable 64-bit content seed for a weight vector, so the per-instance noise is a
 /// deterministic function of the *weights themselves* (FNV-1a over the bit patterns).
