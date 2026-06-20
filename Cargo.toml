@@ -8,7 +8,7 @@ members = [
     "autoresearch-verticals",
     "autoresearch-training-runtime",
     "autoresearch-training-blueprint-adapter",
-    "autoresearch-supervisor",
+    "autoresearch-generic-engine",
     "autoresearch-competitions-lib",
     "autoresearch-competitions-bin",
 ]

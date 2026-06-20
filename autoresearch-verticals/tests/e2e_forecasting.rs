@@ -1,7 +1,7 @@
 //! End-to-end: the autoresearch market runs a **forecasting** competition and pays
 //! only for a certified model that generalizes out of sample.
 //!
-//! Every researcher drives the **same universal** [`SupervisorEngine`] — the one
+//! Every researcher drives the **same generic** [`GenericEngine`] — the one
 //! seeded local search shared across all verticals — differing only by start point,
 //! search budget, step, and seed. The engine searches the forecaster's AR-coefficient
 //! encoding ([`GenericArtifact::params`]) to drive the *dev* (in-sample) error down;
@@ -9,14 +9,14 @@
 //! process (with an out-of-sample complexity penalty), gates, ranks, and pays.
 //!
 //! Deterministic (a synthetic series, no live data) so it runs in CI. It proves the
-//! *market mechanism around forecasting*: one universal engine, held-out re-scoring of
+//! *market mechanism around forecasting*: one generic engine, held-out re-scoring of
 //! a delegated model, and the gate refusing an over-fit that only looked good in-sample.
 
+use autoresearch_generic_engine::{ArtifactKind, GenericArtifact, GenericEngine, GenericSurface};
 use autoresearch_protocol::{CompetitionConfig, ResearcherRun, run_oneshot_competitive};
 use autoresearch_runtime::reward::{RewardSchedule, total_wei};
 use autoresearch_runtime::traits::Scorer;
 use autoresearch_runtime::types::{Cadence, Gate, Knobs, ScorerKind, Split, Structure, Visibility};
-use autoresearch_supervisor::{ArtifactKind, GenericArtifact, GenericSurface, SupervisorEngine};
 use autoresearch_verticals::forecasting::{ForecastScorer, baseline, start};
 
 const POOL_WEI: u128 = 1_000_000;
@@ -129,7 +129,7 @@ async fn market_improves_forecasting_on_heldout() {
     let outcome =
         run_oneshot_competitive(&cfg, &surface, &scorer, &baseline, &researchers, |run| {
             let h = hypothesis_for(&run.researcher);
-            SupervisorEngine::new(run.researcher.clone(), h.start, scorer.clone(), run.seed)
+            GenericEngine::new(run.researcher.clone(), h.start, scorer.clone(), run.seed)
                 .with_budget(h.budget)
                 .with_step(h.step)
         })

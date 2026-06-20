@@ -275,8 +275,9 @@ impl TrainingCluster for SubprocessTrainingCluster {
         let config = recipe_to_subprocess_config(&recipe);
         let binary = self.binary.clone();
         async move {
-            let config_json = serde_json::to_string(&config)
-                .map_err(|e| EngineError::Backend(format!("subprocess config serialization: {e}")))?;
+            let config_json = serde_json::to_string(&config).map_err(|e| {
+                EngineError::Backend(format!("subprocess config serialization: {e}"))
+            })?;
             subprocess_train(&binary, &recipe, seed, &config_json).await
         }
     }
@@ -330,6 +331,7 @@ async fn subprocess_train(
         recipe: *recipe,
         train_seed: seed,
         train_loss,
+        checkpoint_hash: [0u8; 32],
     })
 }
 
@@ -460,6 +462,7 @@ async fn service_train(
         recipe: *recipe,
         train_seed: seed,
         train_loss,
+        checkpoint_hash: [0u8; 32],
     })
 }
 
@@ -473,7 +476,8 @@ async fn service_train(
     _config_json: &str,
 ) -> Result<TrainedArtifact, EngineError> {
     Err(EngineError::Backend(
-        "service-backend feature not enabled: needs external service client + operator cluster".to_string(),
+        "service-backend feature not enabled: needs external service client + operator cluster"
+            .to_string(),
     ))
 }
 
@@ -612,10 +616,16 @@ mod tests {
             "no TEE => not sealed"
         );
         assert!(
-            SubprocessTrainingCluster::new().with_tee().provides_sealed_isolation(),
+            SubprocessTrainingCluster::new()
+                .with_tee()
+                .provides_sealed_isolation(),
             "TEE flag => sealed"
         );
         assert!(!ServiceTrainingCluster::new(1).provides_sealed_isolation());
-        assert!(ServiceTrainingCluster::new(1).with_tee().provides_sealed_isolation());
+        assert!(
+            ServiceTrainingCluster::new(1)
+                .with_tee()
+                .provides_sealed_isolation()
+        );
     }
 }

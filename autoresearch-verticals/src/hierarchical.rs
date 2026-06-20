@@ -209,6 +209,7 @@ where
                 recipe: *recipe,
                 train_seed: seed,
                 train_loss: self.merge_loss(&inner_losses),
+                checkpoint_hash: [0u8; 32],
             })
         }
     }

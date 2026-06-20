@@ -190,6 +190,9 @@ pub struct TrainedArtifact {
     pub recipe: TrainingRecipe,
     pub train_seed: u64,
     pub train_loss: f64,
+    /// SHA-256 of the checkpoint the cluster produced, when available.
+    /// Zeroes when the cluster does not surface a checkpoint hash.
+    pub checkpoint_hash: [u8; 32],
 }
 
 // --- Surface ----------------------------------------------------------------
@@ -393,6 +396,7 @@ impl LocalSimCluster {
             recipe: *recipe,
             train_seed: seed,
             train_loss: recipe.train_loss(seed),
+            checkpoint_hash: [0u8; 32],
         }
     }
 }

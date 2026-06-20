@@ -3,7 +3,7 @@
 //! market pays only for a proof a checker **accepts** and that is **short**.
 //!
 //! Researchers submit a candidate proof encoded as a numeric *tactic vector* (the
-//! [`GenericArtifact::params`] the universal [`SupervisorEngine`] searches). A
+//! [`GenericArtifact::params`] the generic [`GenericEngine`] searches). A
 //! deterministic **proof checker** decides VALIDITY — the proof is accepted iff the
 //! tactic vector lands in a *valid region* (a deterministic predicate over the
 //! params, the stand-in for "the kernel type-checks every step") — and measures
@@ -18,7 +18,7 @@
 //! [`ProofScorer`] reports `value = valid ? (VALID_BONUS - size) : INVALID_VALUE`:
 //!
 //! - A **valid, short** proof scores just below [`VALID_BONUS`] (smaller proofs
-//!   score higher), so the universal engine — which maximises the dev value — is
+//!   score higher), so the generic engine — which maximises the dev value — is
 //!   pulled toward valid regions and then toward shorter proofs inside them.
 //! - An **invalid** proof scores [`INVALID_VALUE`] (a large negative constant), far
 //!   below any baseline, so it produces a negative lift and is *always* gated out.
@@ -48,9 +48,9 @@
 
 use std::future::Future;
 
+use autoresearch_generic_engine::{ArtifactKind, GenericArtifact};
 use autoresearch_runtime::traits::{Scorer, ScorerError};
 use autoresearch_runtime::types::{Measurement, Split};
-use autoresearch_supervisor::{ArtifactKind, GenericArtifact};
 
 // --- Proof-checker constants ------------------------------------------------
 //

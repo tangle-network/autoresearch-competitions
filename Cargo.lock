@@ -1744,6 +1744,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "autoresearch-generic-engine"
+version = "0.1.0"
+dependencies = [
+ "autoresearch-runtime",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "autoresearch-protocol"
 version = "0.1.0"
 dependencies = [
@@ -1789,17 +1800,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "autoresearch-supervisor"
-version = "0.1.0"
-dependencies = [
- "autoresearch-runtime",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
-]
-
-[[package]]
 name = "autoresearch-training-blueprint-adapter"
 version = "0.1.0"
 dependencies = [
@@ -1829,9 +1829,9 @@ dependencies = [
 name = "autoresearch-verticals"
 version = "0.1.0"
 dependencies = [
+ "autoresearch-generic-engine",
  "autoresearch-protocol",
  "autoresearch-runtime",
- "autoresearch-supervisor",
  "serde_json",
  "tokio",
 ]

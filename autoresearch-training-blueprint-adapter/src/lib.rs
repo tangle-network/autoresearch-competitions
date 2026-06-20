@@ -265,10 +265,16 @@ async fn blueprint_train(
                     "operator reported a non-finite current_loss".to_string(),
                 ));
             }
+            let checkpoint_hash = status
+                .latest_checkpoint_hash
+                .as_deref()
+                .and_then(decode_hex_hash)
+                .unwrap_or([0u8; 32]);
             return Ok(TrainedArtifact {
                 recipe: *recipe,
                 train_seed: seed,
                 train_loss,
+                checkpoint_hash,
             });
         }
 
@@ -301,9 +307,24 @@ struct JobStatus {
     job_id: u64,
     completed: bool,
     current_loss: f32,
+    latest_checkpoint_hash: Option<String>,
 }
 
 // --- Tests -------------------------------------------------------------------
+
+#[cfg(feature = "operator-backend")]
+fn decode_hex_hash(s: &str) -> Option<[u8; 32]> {
+    let s = s.strip_prefix("0x").unwrap_or(s);
+    if s.len() != 64 {
+        return None;
+    }
+    let mut out = [0u8; 32];
+    for (i, chunk) in s.as_bytes().chunks_exact(2).enumerate() {
+        let chunk = std::str::from_utf8(chunk).ok()?;
+        out[i] = u8::from_str_radix(chunk, 16).ok()?;
+    }
+    Some(out)
+}
 
 #[cfg(test)]
 mod tests {

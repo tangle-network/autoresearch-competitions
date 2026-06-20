@@ -1,9 +1,9 @@
 [package]
-name = "autoresearch-supervisor"
+name = "autoresearch-generic-engine"
 version = "0.1.0"
 edition.workspace = true
 authors.workspace = true
-description = "The universal improvement engine: one local-search SupervisorEngine and one external-process SubprocessEngine that improve ANY artifact against ANY scorer. Every algorithmic-advancement domain collapses to writing a Scorer — the Engine is shared."
+description = "The generic fallback engine: a deterministic local-search GenericEngine (stand-in) and an external-process SubprocessEngine, for improvement domains whose artifact is expressible as a numeric encoding or a caller-supplied driver. Domains with richer structure (e.g. distributed-training) get their own Engine; the market is agnostic via the shared Engine trait."
 license.workspace = true
 
 [features]

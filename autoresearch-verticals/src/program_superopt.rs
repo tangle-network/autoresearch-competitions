@@ -10,16 +10,16 @@
 //! speedup is ignored; only the held-out re-score decides payment, and a recipe that
 //! is *fast but incorrect* is refused outright.
 //!
-//! # Where this plugs into the universal engine
+//! # Where this plugs into the generic engine
 //!
 //! Unlike the distributed-training vertical (which carries its own
-//! `DistributedTrainingEngine`), this vertical drives the **universal**
-//! [`SupervisorEngine`]: the same seeded local search every domain shares. The recipe
+//! `DistributedTrainingEngine`), this vertical drives the **generic**
+//! [`GenericEngine`]: the same seeded local search every domain shares. The recipe
 //! is encoded in [`GenericArtifact::params`] (`[unroll, vectorize, cache_block]`); the
 //! engine perturbs that vector to maximize the *dev* speedup this [`ProgramScorer`]
 //! reports, and the Referee re-scores the produced params on held-out. Researchers
 //! differ only by **seed / budget / step / start point** — never by a different engine.
-//! That is the generalization the supervisor exists to prove: a new domain is a new
+//! That is the generalization the generic engine exists to prove: a new domain is a new
 //! scorer, not a new engine.
 //!
 //! # The optimization surface (honest stand-in)
@@ -52,9 +52,9 @@
 
 use std::future::Future;
 
+use autoresearch_generic_engine::{ArtifactKind, GenericArtifact};
 use autoresearch_runtime::traits::{Scorer, ScorerError};
 use autoresearch_runtime::types::{Measurement, Split};
-use autoresearch_supervisor::{ArtifactKind, GenericArtifact};
 
 // --- Kernel-runtime model constants ----------------------------------------
 //
@@ -220,7 +220,7 @@ fn mean_speedup(recipe: &OptRecipe, split: Split) -> f64 {
 /// a positive lift for a genuine speedup.
 ///
 /// The same scorer serves two roles, distinguished only by [`Split`]:
-/// - [`Split::Dev`] — the researcher-visible signal the [`SupervisorEngine`] hill-climbs
+/// - [`Split::Dev`] — the researcher-visible signal the [`GenericEngine`] hill-climbs
 ///   (optimum at `OPT_DEV`).
 /// - [`Split::HeldOut`] — the Referee's re-score (optimum at `OPT_HELDOUT`). A recipe
 ///   that over-fits the dev instance lands slightly off the held-out optimum, so its

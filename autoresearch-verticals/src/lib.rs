@@ -56,8 +56,8 @@ pub use training_market::{
     RefereeVerdict, RescorePanel, SubmissionResult,
 };
 
-// The universal-engine verticals: each is just a `Scorer` over `GenericArtifact`,
-// all driven by the one `autoresearch_supervisor::SupervisorEngine`.
+// The generic-engine verticals: each is just a `Scorer` over `GenericArtifact`,
+// driven by the shared `autoresearch_generic_engine::GenericEngine`.
 pub use agent_improvement::AgentProfileScorer;
 pub use combinatorial_solver::SolverScorer;
 pub use forecasting::ForecastScorer;

@@ -1,7 +1,7 @@
-# Generalization: one engine, every domain
+# Generalization: a generic engine for the search-loop class
 
-How the blueprint stops needing a new engine for every algorithmic-advancement
-domain — and what that does (and does **not**) replace.
+How the blueprint avoids needing a bespoke `Engine` for every algorithmic-
+advancement domain — and what that does (and does **not**) replace.
 
 ## The seam
 
@@ -15,12 +15,14 @@ A "vertical" is one `(Surface, Scorer, Engine)` triple. The protocol underneath
 (gate, reward, stake, dispute, slash, privacy tiers, continuous/collaborative,
 marketplace) is finished and domain-agnostic.
 
-## The change: one universal Engine
+## The change: a generic Engine for the search-loop class
 
-Historically, a new domain could mean a new `Engine` — unbounded maintenance. The
-`autoresearch-supervisor` crate collapses that:
+A new domain *can* mean a new `Engine` — but only when its producer is not a
+search loop (see the boundary below). For the broad class where "improve X" *is*
+"iteratively propose-and-evaluate against a scorer," the `autoresearch-generic-engine`
+crate provides one shared `Engine`:
 
-- **`SupervisorEngine`** improves *any* `GenericArtifact` against *any* `Scorer` by
+- **`GenericEngine`** improves *any* `GenericArtifact` against *any* `Scorer` by
   running a long-horizon propose → score → keep-better loop. It is **domain-blind**:
   it searches the artifact's numeric encoding; only the `Scorer` knows the domain.
 - **`SubprocessEngine`** (feature `subprocess-backend`) is a generic external-process
@@ -29,10 +31,11 @@ Historically, a new domain could mean a new `Engine` — unbounded maintenance. 
   for the deterministic stand-in. This crate does not ship a driver; it is a seam for
   plugging in a real solver/prover/agent loop when one is available.
 
-**Adding a domain is now: write a `Scorer`.** Not an engine. That is the maintenance
-win.
+**Adding a search-loop domain is: write a `Scorer`.** Domains whose producer is
+*not* a propose-and-evaluate search (a multi-node training run, a hidden-oracle
+query) still get their own `Engine` — see the boundary below.
 
-Proven in `tests/e2e_generalization.rs` — the *same* `SupervisorEngine` improves five
+Proven in `tests/e2e_generalization.rs` — the *same* `GenericEngine` improves five
 different domains, held-out:
 
 | Domain | held-out value before → after |
@@ -57,17 +60,17 @@ kinds of engine coexist:
      external GPU cluster; the "search" is distributed gradient descent.
    - `BlackBoxOptimizerEngine` — queries a hidden reference oracle (private/quantum).
    - `FixedConfigEngine` — passthrough of a fixed submission (e.g. nanoGPT).
-2. **The universal engine** (`SupervisorEngine`) — for the broad class where "improve
+2. **The generic engine** (`GenericEngine`) — for the broad class where "improve
    X" *is* "iteratively propose-and-evaluate against a scorer."
 
-They **compose** rather than compete: `SupervisorEngine` can search over (say)
+They **compose** rather than compete: `GenericEngine` can search over (say)
 training recipes and dispatch each candidate to `DistributedTrainingEngine` to
 evaluate — outer search, inner producer.
 
 The existing `GenericArtifact`-free verticals (`config_opt`, `nanogpt`,
 `distributed_training`, the four `ScorerKind` scorers) keep their own artifact types
 and engines and continue to work. Migrating them onto `GenericArtifact` +
-`SupervisorEngine` is optional cleanup, not a requirement.
+`GenericEngine` is optional cleanup, not a requirement.
 
 ## How to add a new vertical
 
@@ -76,12 +79,12 @@ and engines and continue to work. Migrating them onto `GenericArtifact` +
    deterministic stand-in; the real artifact lives in `content` for an external
    backend plugged into `SubprocessEngine`.
 2. (Optional) a domain `Surface` if `GenericSurface` is too permissive.
-3. Drive it with `SupervisorEngine::new(researcher, start, dev_scorer, seed)` — no
+3. Drive it with `GenericEngine::new(researcher, start, dev_scorer, seed)` — no
    new engine. Add an e2e proving the market certifies a gate-clearing lift.
 
 ## Honest boundary
 
-The `SupervisorEngine` stand-in is a *search over a numeric encoding*, and each
+The `GenericEngine` stand-in is a *search over a numeric encoding*, and each
 domain scorer is a *deterministic model* of its metric — enough to prove the market +
 engine generality in CI, not a live solver/prover/forecaster. The real artifacts
 (actual code, proofs, prompts, models) would be produced by an external backend

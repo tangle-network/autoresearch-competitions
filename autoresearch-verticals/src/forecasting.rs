@@ -1,9 +1,9 @@
 //! Forecasting vertical: the autoresearch market drives a **statistical
-//! time-series forecasting** competition on the universal [`SupervisorEngine`].
+//! time-series forecasting** competition on the generic [`GenericEngine`].
 //!
 //! Researchers submit a *forecaster* — a linear autoregressive model whose
 //! coefficients predict the next value of a deterministic synthetic series from
-//! its recent lags. The universal engine searches the coefficient vector
+//! its recent lags. The generic engine searches the coefficient vector
 //! ([`GenericArtifact::params`]) to drive the dev (in-sample) forecast error down;
 //! the market's Referee re-scores the produced model on a **held-out** window of
 //! the same series, gates it, ranks, and pays. **Searching the dev signal never
@@ -37,15 +37,15 @@
 //! series — no `rand`, no clock, no I/O — so every CI proof is byte-reproducible.
 //! It is the marked stand-in for the real artifact: a live forecasting model built
 //! and back-tested against real data. What it proves is the **market mechanism
-//! around forecasting**: the universal engine searching a coefficient encoding,
+//! around forecasting**: the generic engine searching a coefficient encoding,
 //! held-out re-scoring of the produced model, and the promotion gate refusing an
 //! over-fit that only looked good in-sample.
 
 use std::future::Future;
 
+use autoresearch_generic_engine::{ArtifactKind, GenericArtifact};
 use autoresearch_runtime::traits::{Scorer, ScorerError};
 use autoresearch_runtime::types::{Measurement, Split};
-use autoresearch_supervisor::{ArtifactKind, GenericArtifact};
 
 // --- Series + model geometry ------------------------------------------------
 
@@ -325,7 +325,7 @@ pub fn baseline() -> GenericArtifact {
     GenericArtifact::baseline(ArtifactKind::Forecast, ORDER, "zero-coefficient forecaster")
 }
 
-/// A starting forecaster the universal engine searches from: all-zeros params of
+/// A starting forecaster the generic engine searches from: all-zeros params of
 /// the right dimension, tagged [`ArtifactKind::Forecast`].
 #[must_use]
 pub fn start() -> GenericArtifact {

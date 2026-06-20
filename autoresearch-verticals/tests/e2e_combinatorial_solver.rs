@@ -1,7 +1,7 @@
 //! End-to-end: the autoresearch market runs a **combinatorial-solver** competition
 //! and pays only for a certified, generalizing improvement in solution quality.
 //!
-//! Every researcher drives the **same universal** [`SupervisorEngine`] — the one
+//! Every researcher drives the **same generic** [`GenericEngine`] — the one
 //! seeded local search shared across all verticals — differing only by start point,
 //! search budget, step, and seed. The engine searches the solver's heuristic-weight
 //! encoding ([`GenericArtifact::params`]) to raise the *dev* objective
@@ -9,15 +9,15 @@
 //! instances (a small distribution shift), gates, ranks, and pays.
 //!
 //! Deterministic (no real solver) so it runs in CI. It proves the *market mechanism
-//! around solver design*: one universal engine, held-out re-scoring of delegated
+//! around solver design*: one generic engine, held-out re-scoring of delegated
 //! heuristic weights, and the gate refusing weights that do not actually improve
 //! solution quality out of sample.
 
+use autoresearch_generic_engine::{GenericArtifact, GenericEngine, GenericSurface};
 use autoresearch_protocol::{CompetitionConfig, ResearcherRun, run_oneshot_competitive};
 use autoresearch_runtime::reward::{RewardSchedule, total_wei};
 use autoresearch_runtime::traits::Scorer;
 use autoresearch_runtime::types::{Cadence, Gate, Knobs, ScorerKind, Split, Structure, Visibility};
-use autoresearch_supervisor::{GenericArtifact, GenericSurface, SupervisorEngine};
 use autoresearch_verticals::combinatorial_solver::{
     SolverScorer, baseline_artifact, dev_optimum, solver_artifact,
 };
@@ -35,7 +35,7 @@ fn knobs() -> Knobs {
 }
 
 /// A researcher hypothesis: the start point and search budget/step that parameterize
-/// the *same* universal [`SupervisorEngine`].
+/// the *same* generic [`GenericEngine`].
 struct Hypothesis {
     start: GenericArtifact,
     budget: usize,
@@ -123,7 +123,7 @@ async fn market_improves_combinatorial_solver_on_heldout() {
     let outcome =
         run_oneshot_competitive(&cfg, &surface, &scorer, &baseline, &researchers, |run| {
             let h = hypothesis_for(&run.researcher);
-            SupervisorEngine::new(run.researcher.clone(), h.start, scorer, run.seed)
+            GenericEngine::new(run.researcher.clone(), h.start, scorer, run.seed)
                 .with_budget(h.budget)
                 .with_step(h.step)
         })
