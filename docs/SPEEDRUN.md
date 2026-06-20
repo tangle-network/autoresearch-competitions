@@ -8,10 +8,14 @@
 > claim about what already exists is filed with a code reference; everything else
 > is proposed. Design decisions in §8 are **locked** (Drew-approved picks).
 
-## The flagship, concretely (modded-nanogpt)
+## The system is general; the instances are evidence
 
-The viral genre this vertical targets, grounded in the real thing
-(`github.com/KellerJordan/modded-nanogpt`):
+The product is the **general market mechanism** — recipe-submitted,
+held-out-gated, cost-ranked, prize-settled — not any one speedrun. Concrete
+speedruns (modded-nanogpt, Sokoban, ScaleAutoResearch) are *instances* that
+prove the mechanism fits a viral genre and spans substrates; they are **not the
+target**. modded-nanogpt is the clearest instance, so we use it to make the
+mechanism vivid (`github.com/KellerJordan/modded-nanogpt`):
 
 > *Find the fastest algorithm to use 8× NVIDIA H100 GPUs to train a language
 > model that attains ≤3.28 cross-entropy loss on the FineWeb validation set.*
@@ -141,12 +145,22 @@ axis plugs in; lead with **Axis B (derived)** for the CI-runnable sim because it
 needs no new infra and proves the market mechanism end-to-end; treat **Axis A**
 as the headline track that lights up once the operator-attestation path is real.
 
-## 5. Design targets and prior art
+## 5. Instances and prior art
 
-| Prior art | Role |
-| --- | --- |
-| modded-nanogpt (Keller Jordan et al.) | The canonical speedrun: ≤3.28 FineWeb val loss on 8× H100. 84 records, p<0.01 gate, PrimeIntellect-validated. The shape to copy; both its Track 1 (wall-clock) and Track 3 (token-efficiency) map onto our two axes. |
-| `autoresearch-verticals::distributed_training` | The existing vertical this composes with: the `TrainingCluster` seam, `LocalSimCluster` dynamics model, held-out scorer, m-of-n panel. |
+The mechanism fits a range of concrete speedruns; each instance below stresses a
+different facet. None of them is the product — together they show the mechanism
+is substrate-agnostic and that the genre is viral.
+
+| Instance | Surface | Cost axis | What it proves |
+| --- | --- | --- | --- |
+| **modded-nanogpt** Track 1 (Keller Jordan et al.) | LLM pretraining recipe (≤3.28 FineWeb val loss on 8× H100; 84 records, p<0.01 gate, PrimeIntellect-validated) | A — wall-clock, pinned HW | the canonical viral speedrun; the held-out CI gate + independent re-time are its rules verbatim |
+| **modded-nanogpt** Track 3 / **ScaleAutoResearch** (Wang: CC+Codex, 2875→2690 steps on 1–2 A40 nodes) | same surface, but an **automated research loop** is the competitor | B — steps-to-target, derived | an autoresearch loop wins on cheap, heterogeneous hardware — permissionless operators, no hyperscale GPUs. This is README's "humans, agents, or automated research loops submit a method" made real |
+| **Sokoban Speedrun** (Kaddour: RL+GRPO on Qwen3-4B, 87min/8×H100 baseline) | an RL pipeline that solves Sokoban puzzles | A — wall-clock | speedruns span substrates: pretraining, RL/agents, optimizers. The repo's GRPO adapter already speaks this domain |
+| CoreWeave / MLPerf (DeepSeek-V3 671B in 2min, 8192 Blackwell Ultra) | *vendor infra*, not a recipe | n/a — **boundary case** | the limit instance: when the hardware IS the differentiator it is a `ScorerKind::PrivilegedHardware` (`types.rs:70`) competition, not a recipe speedrun. Names the boundary; do not claim it as a speedrun win |
+
+The vertical composes with `autoresearch-verticals::distributed_training` — the
+existing `TrainingCluster` seam, `LocalSimCluster` dynamics model, held-out
+scorer, and m-of-n panel that every instance above would run on top of.
 
 **Design stance (mirrors `docs/DISTRIBUTED-TRAINING.md:55`):** borrow the
 *algorithmic shape* (cost-to-target ranking, two cost axes), **own the
