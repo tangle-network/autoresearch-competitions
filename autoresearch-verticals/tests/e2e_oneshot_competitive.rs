@@ -6,12 +6,21 @@
 //! Every number here is measured on synthetic-but-real held-out data through the
 //! same scorer the Referee would use — nothing is mocked or hardcoded.
 
+use autoresearch_generic_engine::{ArtifactKind, GenericArtifact, GenericEngine, GenericSurface};
 use autoresearch_protocol::{CompetitionConfig, ResearcherRun, run_oneshot_competitive};
 use autoresearch_runtime::reward::{RewardSchedule, total_wei};
 use autoresearch_runtime::types::{Cadence, Gate, Knobs, ScorerKind, Structure, Visibility};
-use autoresearch_verticals::{ConfigArtifact, ConfigSurface, LinearScorer, LocalSearchEngine};
+use autoresearch_verticals::LinearScorer;
 
 const POOL_WEI: u128 = 1_000_000;
+
+/// Linear-classifier dimensionality (mirrors `scorers::D`).
+const D: usize = 4;
+
+/// Search budget for the deterministic GenericEngine stand-in. Generous enough that
+/// the (1+1)-ES reliably finds a near-W_TRUE direction on the dev split, so the
+/// produced candidate generalizes to a large held-out lift (the test floor is 0.30).
+const SEARCH_BUDGET: usize = 2000;
 
 fn knobs() -> Knobs {
     Knobs {
@@ -22,11 +31,15 @@ fn knobs() -> Knobs {
     }
 }
 
+fn baseline() -> GenericArtifact {
+    GenericArtifact::baseline(ArtifactKind::Config, D, "")
+}
+
 #[tokio::test]
 async fn competitive_oneshot_produces_real_lift_and_conserving_payouts() {
-    let surface = ConfigSurface;
+    let surface = GenericSurface;
     let scorer = LinearScorer::new();
-    let baseline = ConfigArtifact::baseline();
+    let baseline = baseline();
 
     // Five researchers with distinct seeds => distinct, independently-good searches.
     let researchers: Vec<ResearcherRun> = (1u64..=5)
@@ -48,7 +61,13 @@ async fn competitive_oneshot_produces_real_lift_and_conserving_payouts() {
 
     let outcome =
         run_oneshot_competitive(&cfg, &surface, &scorer, &baseline, &researchers, |run| {
-            LocalSearchEngine::new(run.seed)
+            GenericEngine::new(
+                run.researcher.clone(),
+                baseline.clone(),
+                scorer.clone(),
+                run.seed,
+            )
+            .with_budget(SEARCH_BUDGET)
         })
         .await
         .expect("competition should run");
@@ -121,14 +140,14 @@ async fn competitive_oneshot_produces_real_lift_and_conserving_payouts() {
 /// not decorative.
 #[tokio::test]
 async fn no_improvement_yields_no_winners_and_no_payouts() {
-    let surface = ConfigSurface;
+    let surface = GenericSurface;
     let scorer = LinearScorer::new();
-    let baseline = ConfigArtifact::baseline();
+    let baseline = baseline();
 
     // An "engine" that just returns the baseline (zero search): no lift possible.
     struct NullEngine;
     impl autoresearch_runtime::traits::Engine for NullEngine {
-        type Artifact = ConfigArtifact;
+        type Artifact = GenericArtifact;
         fn id(&self) -> &str {
             "null"
         }
@@ -138,7 +157,7 @@ async fn no_improvement_yields_no_winners_and_no_payouts() {
         ) -> impl std::future::Future<
             Output = Result<Self::Artifact, autoresearch_runtime::traits::EngineError>,
         > + Send {
-            std::future::ready(Ok(ConfigArtifact::baseline()))
+            std::future::ready(Ok(GenericArtifact::baseline(ArtifactKind::Config, D, "")))
         }
     }
 
@@ -157,12 +176,11 @@ async fn no_improvement_yields_no_winners_and_no_payouts() {
         knobs: knobs(),
     };
 
-    let outcome =
-        run_oneshot_competitive(&cfg, &surface, &scorer, &baseline, &researchers, |_run| {
-            NullEngine
-        })
-        .await
-        .expect("run should succeed even with no winners");
+    let outcome = run_oneshot_competitive(&cfg, &surface, &scorer, &baseline, &researchers, |_| {
+        NullEngine
+    })
+    .await
+    .expect("run should succeed even with no winners");
 
     assert_eq!(outcome.winners, 0, "baseline-vs-baseline is zero lift");
     assert!(outcome.payouts.is_empty(), "no winners => no payouts");
@@ -180,12 +198,13 @@ async fn no_improvement_yields_no_winners_and_no_payouts() {
 /// the statistical separation the gate requires.
 #[tokio::test]
 async fn gate_excludes_positive_but_insufficient_lift() {
-    let surface = ConfigSurface;
+    let surface = GenericSurface;
     let scorer = LinearScorer::new();
-    let baseline = ConfigArtifact::baseline();
+    let baseline = baseline();
 
-    // Two researchers: one weak (sub-gate), one strong (a real local search). Both are
-    // driven through the uniform `MixedEngine` so a single `make_engine` closure suffices.
+    // Two researchers: one weak (sub-gate), one strong (a real generic-engine search).
+    // Both are driven through the uniform `MixedEngine` so a single `make_engine`
+    // closure suffices.
     let researchers = vec![
         ResearcherRun {
             researcher: "0xweak".into(),
@@ -212,7 +231,15 @@ async fn gate_excludes_positive_but_insufficient_lift() {
             if run.researcher == "0xweak" {
                 MixedEngine::Weak
             } else {
-                MixedEngine::Strong(LocalSearchEngine::new(run.seed))
+                MixedEngine::Strong(
+                    GenericEngine::new(
+                        run.researcher.clone(),
+                        baseline.clone(),
+                        scorer.clone(),
+                        run.seed,
+                    )
+                    .with_budget(SEARCH_BUDGET),
+                )
             }
         })
         .await
@@ -237,15 +264,15 @@ async fn gate_excludes_positive_but_insufficient_lift() {
 }
 
 /// A uniform engine type so the per-researcher dispatch above can return either a weak
-/// fixed artifact (a single tiny non-zero weight → real positive lift, sub-gate CI) or a
-/// real `LocalSearchEngine`, from one `make_engine` closure.
+/// fixed artifact (a single tiny non-zero weight → real positive lift, sub-gate CI) or
+/// the shared `GenericEngine`, from one `make_engine` closure.
 enum MixedEngine {
     Weak,
-    Strong(LocalSearchEngine),
+    Strong(GenericEngine<LinearScorer>),
 }
 
 impl autoresearch_runtime::traits::Engine for MixedEngine {
-    type Artifact = ConfigArtifact;
+    type Artifact = GenericArtifact;
     fn id(&self) -> &str {
         match self {
             MixedEngine::Weak => "weak",
@@ -261,8 +288,8 @@ impl autoresearch_runtime::traits::Engine for MixedEngine {
         // `WEAK_PARAMS` yields a measured held-out delta of ~0.15 with a CI lower bound
         // of ~0.0014 — a real positive lift that is nonetheless below the gate floor.
         const WEAK_PARAMS: [f64; 4] = [0.01, 0.0, 0.0, 0.0];
-        // Resolve the strong arm's (ready) future eagerly so we can wrap a single
-        // concrete artifact result in one ready future for both arms.
+        // Resolve the strong arm's future eagerly so we can wrap a single concrete
+        // artifact result in one ready future for both arms.
         let strong = match self {
             MixedEngine::Strong(e) => Some(e.produce(ctx)),
             MixedEngine::Weak => None,
@@ -270,9 +297,11 @@ impl autoresearch_runtime::traits::Engine for MixedEngine {
         async move {
             match strong {
                 Some(fut) => fut.await,
-                None => Ok(ConfigArtifact {
-                    params: WEAK_PARAMS.to_vec(),
-                }),
+                None => Ok(GenericArtifact::new(
+                    ArtifactKind::Config,
+                    WEAK_PARAMS.to_vec(),
+                    String::new(),
+                )),
             }
         }
     }

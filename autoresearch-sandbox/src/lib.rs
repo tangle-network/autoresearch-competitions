@@ -34,7 +34,7 @@
 //! ## Two backends, one trait
 //!
 //! - [`LocalSandboxHost`] (DEFAULT, deterministic, in-process — **a stand-in**): runs
-//!   the method as in-process logic so the config-opt vertical works end-to-end with
+//!   the method as in-process logic so the linear-classifier vertical works end-to-end with
 //!   no Docker, no network, no clock. It honors the [`SandboxBackend`] field for the
 //!   toggle test (records `is_tee`, captures a **synthetic structural** attestation
 //!   when [`SandboxBackend::Tee`]) but does the compute locally. This is what keeps

@@ -9,17 +9,20 @@
 //!   and RUNS the method inside it via [`SandboxMethodEngine`].
 //! - The Referee ([`LinearScorer`] on the held-out split) scores the result.
 //!
-//! The "method" here is the deterministic config-opt search ([`LocalSearchEngine`]):
-//! it improves a [`ConfigArtifact`] toward the ground-truth separator, so the operator
-//! flow yields a real held-out lift over the baseline — nothing mocked.
+//! The "method" here is the deterministic linear-config search driven by the shared
+//! [`GenericEngine`]: it improves a [`GenericArtifact`] toward the ground-truth
+//! separator, so the operator flow yields a real held-out lift over the baseline —
+//! nothing mocked.
 
 use std::future::Future;
+use std::task::{Context, Poll, Waker};
 
+use autoresearch_generic_engine::{ArtifactKind, GenericArtifact, GenericEngine, GenericSurface};
 use autoresearch_protocol::{CompetitionConfig, ResearcherRun, run_oneshot_competitive};
 use autoresearch_runtime::attestation::{TeeType, verify_structural};
 use autoresearch_runtime::privacy::EgressPolicy;
 use autoresearch_runtime::reward::{RewardSchedule, total_wei};
-use autoresearch_runtime::traits::EngineContext;
+use autoresearch_runtime::traits::{Engine, EngineContext};
 use autoresearch_runtime::types::{
     ArtifactRef, Cadence, CompetitionId, Gate, Knobs, ScorerKind, Structure, Visibility,
 };
@@ -27,9 +30,15 @@ use autoresearch_sandbox::{
     LocalMethod, LocalSandboxHost, SandboxBackend, SandboxError, SandboxHandle, SandboxHost,
     SandboxMethodEngine, SandboxProvisionReq,
 };
-use autoresearch_verticals::{ConfigArtifact, ConfigSurface, LinearScorer, LocalSearchEngine};
+use autoresearch_verticals::LinearScorer;
 
 const POOL_WEI: u128 = 1_000_000;
+
+/// Linear-classifier dimensionality (mirrors `autoresearch_verticals::scorers::D`).
+const D: usize = 4;
+
+/// Search budget for the GenericEngine stand-in (matches the verticals' e2e tests).
+const SEARCH_BUDGET: usize = 2000;
 
 fn knobs() -> Knobs {
     Knobs {
@@ -41,24 +50,52 @@ fn knobs() -> Knobs {
 }
 
 /// The in-process stand-in for the researcher's submitted method, executed by the
-/// operator. It runs the deterministic config-opt search seeded by the submitted
-/// method's reference, so it produces a genuinely improved [`ConfigArtifact`] just as
-/// the real method would when run inside the sandbox.
+/// operator. It runs the deterministic linear-config search (driven by the shared
+/// `GenericEngine`) seeded by the submitted method's reference, so it produces a
+/// genuinely improved [`GenericArtifact`] just as the real method would when run
+/// inside the sandbox.
 struct ConfigSearchMethod;
 
 impl LocalMethod for ConfigSearchMethod {
-    type Artifact = ConfigArtifact;
+    type Artifact = GenericArtifact;
 
     fn run(
         &self,
         method: &ArtifactRef,
-        _ctx: &EngineContext,
+        ctx: &EngineContext,
     ) -> Result<Self::Artifact, SandboxError> {
         // Derive the search seed deterministically from the submitted method ref, so
         // two distinct submitted methods produce distinct (but each good) candidates —
         // exactly the spread `run_oneshot_competitive` needs to rank.
         let seed = seed_from_ref(method);
-        Ok(LocalSearchEngine::new(seed).produce_candidate())
+        let baseline = GenericArtifact::baseline(ArtifactKind::Config, D, "");
+        let dev_scorer = LinearScorer::new();
+        let engine = GenericEngine::new("operator-hosted-method", baseline, dev_scorer, seed)
+            .with_budget(SEARCH_BUDGET);
+        // `GenericEngine::produce` is async; the dev scorer (`LinearScorer`) returns a
+        // `ready(...)` future, so the engine's whole produce future completes on the
+        // first poll. Drive it synchronously here with a noop waker — the same pattern
+        // the collaborative e2e uses for the contributor delta futures.
+        block_on_ready(engine.produce(ctx))
+            .map_err(|e| SandboxError::Execution(format!("generic engine produce: {e}")))
+    }
+}
+
+/// Drive a future that is guaranteed to complete on its first poll to completion. The
+/// `GenericEngine`'s produce future is a multi-`await` async block, but every `await`
+/// resolves immediately (the `LinearScorer` returns `ready(...)`), so the whole future
+/// polls to Ready in a single pass.
+fn block_on_ready<F: Future>(fut: F) -> F::Output {
+    let waker = Waker::noop();
+    let mut cx = Context::from_waker(waker);
+    let mut fut = Box::pin(fut);
+    match fut.as_mut().poll(&mut cx) {
+        Poll::Ready(v) => v,
+        Poll::Pending => {
+            panic!(
+                "GenericEngine produce future must complete on first poll (LinearScorer is ready)"
+            )
+        }
     }
 }
 
@@ -92,9 +129,9 @@ fn run_ctx(id: CompetitionId) -> EngineContext {
 
 #[tokio::test]
 async fn operator_runs_submitted_method_and_produces_real_lift() {
-    let surface = ConfigSurface;
+    let surface = GenericSurface;
     let scorer = LinearScorer::new();
-    let baseline = ConfigArtifact::baseline();
+    let baseline = GenericArtifact::baseline(ArtifactKind::Config, D, "");
 
     // Five researchers, each SUBMITTING a distinct method (distinct seed). The operator
     // runs each method inside a (local stand-in) sandbox via SandboxMethodEngine.
@@ -192,15 +229,15 @@ async fn non_tee_backends_have_no_sealing_and_no_attestation() {
 async fn the_same_method_works_under_both_backends_with_one_field_changed() {
     // The "easy toggle" guarantee: the SAME engine/method produces the SAME candidate
     // under Docker and under TEE — only the `backend` field differs.
-    let surface = ConfigSurface;
+    let surface = GenericSurface;
     let scorer = LinearScorer::new();
-    let baseline = ConfigArtifact::baseline();
+    let baseline = GenericArtifact::baseline(ArtifactKind::Config, D, "");
 
     async fn winners_under(
         backend: SandboxBackend,
-        surface: &ConfigSurface,
+        surface: &GenericSurface,
         scorer: &LinearScorer,
-        baseline: &ConfigArtifact,
+        baseline: &GenericArtifact,
     ) -> f64 {
         // TEE requires a fail-closed egress; supply no-egress for the TEE arm. The
         // public/Docker arm has no proprietary data to protect, so no policy is needed.
@@ -255,7 +292,7 @@ struct TeeAwareEngine {
 }
 
 impl autoresearch_runtime::traits::Engine for TeeAwareEngine {
-    type Artifact = ConfigArtifact;
+    type Artifact = GenericArtifact;
     fn id(&self) -> &str {
         "tee-aware-sandbox-method"
     }

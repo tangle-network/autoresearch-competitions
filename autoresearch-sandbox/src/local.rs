@@ -2,7 +2,7 @@
 //! backend.
 //!
 //! **This is a stand-in, not a real sandbox.** It runs the researcher's method as
-//! plain in-process logic — no Docker, no network, no clock — so the config-opt
+//! plain in-process logic — no Docker, no network, no clock — so the linear-classifier
 //! vertical (and the six default gates) work end-to-end with nothing installed. It
 //! honors the [`SandboxBackend`] toggle for the test that proves the switch
 //! (recording `is_tee`, capturing a **synthetic structural** attestation when
@@ -34,10 +34,10 @@ use crate::host::{SandboxBackend, SandboxError, SandboxHandle, SandboxHost, Sand
 /// method that the operator runs inside the sandbox.
 ///
 /// `Artifact` is the typed candidate this method produces (e.g.
-/// `autoresearch_verticals::ConfigArtifact`). `run` is handed the submitted method's
-/// reference and the run context (sealed-target / dev-split handles, budget, egress)
-/// and returns the produced candidate. It must be pure and deterministic — same
-/// inputs, byte-identical output — so the default suite stays reproducible.
+/// `autoresearch_generic_engine::GenericArtifact`). `run` is handed the submitted
+/// method's reference and the run context (sealed-target / dev-split handles, budget,
+/// egress) and returns the produced candidate. It must be pure and deterministic —
+/// same inputs, byte-identical output — so the default suite stays reproducible.
 pub trait LocalMethod: Send + Sync {
     /// The typed candidate artifact this method produces.
     type Artifact: Clone + Send + Sync;

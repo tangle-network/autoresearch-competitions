@@ -3,7 +3,7 @@ name = "autoresearch-verticals"
 version = "0.1.0"
 edition.workspace = true
 authors.workspace = true
-description = "Concrete Surface/Scorer/Engine verticals for autoresearch competitions, starting with a deterministic config-optimization demo that produces real held-out lift"
+description = "Surface/Scorer verticals for autoresearch competitions — a deterministic linear-classifier demo plus the agent/solver/proof/program/forecast scorers and the four ScorerKind dispatches, all driven by the shared autoresearch-generic-engine GenericEngine"
 license.workspace = true
 
 [dependencies]

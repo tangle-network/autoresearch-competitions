@@ -1,6 +1,5 @@
-//! The three non-`HeldOutEval` scorer kinds and the black-box optimizer engine —
-//! the M5 instantiations of [`autoresearch_runtime::ScorerKind`] beyond the
-//! agent-profile replay scorer of [`crate::config_opt`].
+//! The four [`autoresearch_runtime::ScorerKind`] instantiations, the black-box
+//! optimizer engine, the deterministic linear-classifier demo, and its collaborative contributor.
 //!
 //! The centerpiece is **Scenario A — the private-oracle (quantum) case**
 //! ([`PrivateOracleScorer`] + [`BlackBoxOptimizerEngine`]): researchers are scored
@@ -10,7 +9,7 @@
 //! withheld-quantum-benchmark shape — proven end-to-end in
 //! `tests/e2e_private_oracle.rs`.
 //!
-//! Two of the three scorers are **honest local stand-ins**, marked as such:
+//! Two of the four scorers are **honest local stand-ins**, marked as such:
 //!
 //! - [`PrivilegedHardwareScorer`] stands in for an expensive/privileged evaluation
 //!   (a real quantum device or a proprietary simulator). It computes a deterministic
@@ -20,22 +19,27 @@
 //!   [`Measurement`] (mean + CI across panelists). It does NOT run a live async human
 //!   panel; the real integration is external/async and is documented on the type.
 //!
+//! [`LinearScorer`] is the relocated M1 stand-in for a real agent-profile scorer
+//! (it would run a submitted profile against held-out task suites), and
+//! [`SharedSearchContributor`] is the local stand-in for the DeMo distributed-training
+//! engine; both operate on the unified [`GenericArtifact`] every vertical shares.
+//!
 //! Everything here is fully deterministic — a seeded linear-congruential generator
 //! (LCG), no `rand`, no clock, no I/O — so the Scenario A climb and every payout are
 //! reproducible (the same property the M1 vertical relies on).
 
 use std::future::Future;
 
+use autoresearch_generic_engine::{ArtifactKind, GenericArtifact};
 use autoresearch_runtime::privacy::SubmissionBudget;
 use autoresearch_runtime::traits::{
     Engine, EngineContext, EngineError, Scorer, ScorerError, Surface, SurfaceError,
 };
 use autoresearch_runtime::types::{ArtifactRef, Measurement, ScorerKind, Split};
 
-use crate::config_opt::ConfigArtifact;
-
-/// Dimensionality of the hidden-target task. Matches the config-opt surface width so
-/// the same [`ConfigArtifact`] flows through both verticals unchanged.
+/// Dimensionality of the linear-classifier / hidden-target task. The shared width of
+/// the linear vertical (relocated from `config_opt`) and the hidden-target surface, so
+/// one [`GenericArtifact`] of length `D` flows through every scorer here unchanged.
 const D: usize = 4;
 /// z for a two-sided 95% normal interval (the closeness score is a bounded mean, not
 /// a binomial proportion, so a normal CI is the right shape here).
@@ -44,7 +48,7 @@ const Z_95: f64 = 1.96;
 // --- Deterministic PRNG -----------------------------------------------------
 
 /// A 64-bit linear-congruential generator (the Knuth MMIX constants), self-contained
-/// so this module owns its determinism exactly as [`crate::config_opt`] does. Used to
+/// so this module owns its determinism, exactly as the other verticals do. Used to
 /// synthesize the hidden reference and to drive the black-box search; no external RNG,
 /// no clock.
 #[derive(Clone, Debug)]
@@ -85,27 +89,26 @@ impl Lcg {
 // ---------------------------------------------------------------------------
 
 /// A fixed-length, finite real vector — the artifact a researcher submits to the
-/// private oracle. This is a re-use of [`ConfigArtifact`]: the surface and the oracle
-/// operate on the same `D`-dimensional vector, so the existing config-opt surface
-/// could equally serve. We keep a dedicated surface so the id (`hidden-target`) is
-/// honest about what is being optimized and so the bounds check matches the oracle.
+/// private oracle. This is a re-use of [`GenericArtifact`] (kind
+/// [`ArtifactKind::Config`]): the surface and the oracle operate on the same
+/// `D`-dimensional vector, so the linear vertical's surface could equally serve. We
+/// keep a dedicated surface so the id (`hidden-target`) is honest about what is being
+/// optimized and so the bounds check matches the oracle.
 #[derive(Clone, Debug, Default)]
 pub struct HiddenTargetSurface;
 
 impl HiddenTargetSurface {
     /// The starting point a researcher's black-box search departs from: the origin,
     /// which is maximally far (in closeness terms) from a generic hidden target. This
-    /// is the analogue of the all-zeros config-opt baseline.
+    /// is the analogue of the all-zeros linear-vertical baseline.
     #[must_use]
-    pub fn origin() -> ConfigArtifact {
-        ConfigArtifact {
-            params: vec![0.0; D],
-        }
+    pub fn origin() -> GenericArtifact {
+        GenericArtifact::baseline(ArtifactKind::Config, D, "")
     }
 }
 
 impl Surface for HiddenTargetSurface {
-    type Artifact = ConfigArtifact;
+    type Artifact = GenericArtifact;
 
     fn id(&self) -> &str {
         "hidden-target"
@@ -132,14 +135,15 @@ impl Surface for HiddenTargetSurface {
         if base.params.len() != delta.params.len() {
             return Err(SurfaceError::Apply("length mismatch".into()));
         }
-        Ok(ConfigArtifact {
-            params: base
-                .params
+        Ok(GenericArtifact::new(
+            base.kind,
+            base.params
                 .iter()
                 .zip(&delta.params)
                 .map(|(b, d)| b + d)
                 .collect(),
-        })
+            base.content.clone(),
+        ))
     }
 
     fn to_ref(&self, artifact: &Self::Artifact) -> Result<ArtifactRef, SurfaceError> {
@@ -353,7 +357,7 @@ impl PrivateOracleScorer {
     ///
     /// # Errors
     /// [`ScorerError::Rejected`] if any param is non-finite.
-    fn certify(&self, artifact: &ConfigArtifact, n: u32) -> Result<Measurement, ScorerError> {
+    fn certify(&self, artifact: &GenericArtifact, n: u32) -> Result<Measurement, ScorerError> {
         if artifact.params.iter().any(|p| !p.is_finite()) {
             return Err(ScorerError::Rejected(
                 "non-finite params cannot be scored".into(),
@@ -382,7 +386,7 @@ impl PrivateOracleScorer {
     ///
     /// The CI half-width shrinks with the configured sample count `n`, giving a
     /// well-powered measurement a black-box engine's lift can clear the gate on.
-    fn query(&self, artifact: &ConfigArtifact, n: u32) -> Result<Measurement, ScorerError> {
+    fn query(&self, artifact: &GenericArtifact, n: u32) -> Result<Measurement, ScorerError> {
         // Reject non-finite params before consuming budget or emitting a measurement:
         // a NaN/inf artifact must not burn a probe or produce a malformed CI.
         if artifact.params.iter().any(|p| !p.is_finite()) {
@@ -415,7 +419,7 @@ impl PrivateOracleScorer {
 const ORACLE_N: u32 = 96;
 
 impl Scorer for PrivateOracleScorer {
-    type Artifact = ConfigArtifact;
+    type Artifact = GenericArtifact;
 
     fn id(&self) -> &str {
         "private-oracle"
@@ -481,7 +485,7 @@ impl<'a> BlackBoxOptimizerEngine<'a> {
     /// Uses [`Split::Dev`] for its probing queries (a researcher's own optimization
     /// loop) — which, for the private oracle, returns the same scalar as `HeldOut`,
     /// because the oracle has no revealing dev split.
-    fn search(&self) -> ConfigArtifact {
+    fn search(&self) -> GenericArtifact {
         let mut rng = Lcg::new(self.seed);
         let mut best = HiddenTargetSurface::origin();
         // Score the starting point. If the very first query is already refused by the
@@ -497,13 +501,17 @@ impl<'a> BlackBoxOptimizerEngine<'a> {
         while spent < self.query_budget {
             let frac = f64::from(spent) / f64::from(self.query_budget.max(1));
             let step = 2.0 * (1.0 - 0.9 * frac); // shrinks from 2.0 toward 0.2
-            let candidate = ConfigArtifact {
-                params: best
-                    .params
+            // Each candidate carries the same `kind` + `content` as the running best;
+            // only the params are perturbed. Content is empty (the optimizer never
+            // produces source/proof text — it climbs a numeric encoding).
+            let candidate = GenericArtifact::new(
+                best.kind,
+                best.params
                     .iter()
                     .map(|p| p + step * rng.next_signed())
                     .collect(),
-            };
+                best.content.clone(),
+            );
             let score = match self.oracle.query(&candidate, ORACLE_N) {
                 Ok(m) => m.value,
                 // The oracle's own budget cut us off: stop and return the best so far.
@@ -520,7 +528,7 @@ impl<'a> BlackBoxOptimizerEngine<'a> {
 }
 
 impl Engine for BlackBoxOptimizerEngine<'_> {
-    type Artifact = ConfigArtifact;
+    type Artifact = GenericArtifact;
 
     fn id(&self) -> &str {
         "black-box-optimizer"
@@ -582,7 +590,7 @@ impl PrivilegedHardwareScorer {
     ///
     /// # Errors
     /// [`ScorerError::Rejected`] if any param is non-finite.
-    fn measure(&self, artifact: &ConfigArtifact) -> Result<Measurement, ScorerError> {
+    fn measure(&self, artifact: &GenericArtifact) -> Result<Measurement, ScorerError> {
         if artifact.params.iter().any(|p| !p.is_finite()) {
             return Err(ScorerError::Rejected(
                 "non-finite params cannot be measured".into(),
@@ -611,7 +619,7 @@ impl PrivilegedHardwareScorer {
 }
 
 impl Scorer for PrivilegedHardwareScorer {
-    type Artifact = ConfigArtifact;
+    type Artifact = GenericArtifact;
 
     fn id(&self) -> &str {
         "privileged-hardware"
@@ -749,7 +757,7 @@ impl HumanPanelScorer {
 
     /// Resolve the recorded verdicts for an artifact by its surface ref, falling back
     /// to the default panel when none is recorded.
-    fn verdicts_for(&self, artifact: &ConfigArtifact) -> Vec<f64> {
+    fn verdicts_for(&self, artifact: &GenericArtifact) -> Vec<f64> {
         let surface = HiddenTargetSurface;
         let key = match surface.to_ref(artifact) {
             Ok(r) => r.0,
@@ -765,7 +773,7 @@ impl HumanPanelScorer {
 }
 
 impl Scorer for HumanPanelScorer {
-    type Artifact = ConfigArtifact;
+    type Artifact = GenericArtifact;
 
     fn id(&self) -> &str {
         "human-panel"
@@ -778,6 +786,353 @@ impl Scorer for HumanPanelScorer {
     ) -> impl Future<Output = Result<Measurement, ScorerError>> + Send {
         let verdicts = self.verdicts_for(artifact);
         std::future::ready(Ok(Self::aggregate(&verdicts)))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The linear-classifier demo.
+// ---------------------------------------------------------------------------
+//
+// A self-contained, fully deterministic demo vertical: tune the weights of a linear
+// classifier so its held-out accuracy beats a zero-weight baseline. Everything here is
+// reproducible — no `rand` crate, no clock, no I/O. A seeded linear-congruential
+// generator (LCG) synthesizes the dataset once at scorer construction. Running the
+// same seed twice yields byte-identical lift numbers, which is what lets the M1
+// end-to-end test assert on a concrete improvement.
+//
+// `LinearScorer` is the local STAND-IN for a real agent-profile scorer, which would
+// run a submitted profile against held-out task suites. The lift it produces is a
+// *real* measured accuracy gain on held-out data, not a hardcoded number — the only
+// thing that is synthetic is the dataset itself. It implements the same `Scorer`
+// trait the orchestrator consumes, so a production adapter drops in with no
+// orchestrator change. The improvement search is driven by the shared
+// `autoresearch_generic_engine::GenericEngine` at the call site.
+
+/// Total samples the synthetic dataset generates.
+const N_TOTAL: usize = 200;
+/// Samples assigned to the dev split (researcher-visible). Remainder is held out.
+const N_DEV: usize = 120;
+/// The ground-truth separating hyperplane. A good search recovers a vector pointing
+/// the same direction as this and classifies held-out points well.
+const W_TRUE: [f64; D] = [1.0, -2.0, 0.5, 1.5];
+
+/// The synthetic, deterministic dataset shared by the scorer and any engine that
+/// drives it. Built once from a fixed LCG seed; identical on every construction.
+#[derive(Clone, Debug)]
+struct Dataset {
+    /// All `N_TOTAL` feature vectors.
+    xs: Vec<[f64; D]>,
+    /// Ground-truth labels: `y[i] = (W_TRUE . xs[i]) > 0`.
+    ys: Vec<bool>,
+}
+
+impl Dataset {
+    /// Build the fixed dataset. Seeded so it is identical on every construction.
+    fn generate() -> Self {
+        // A fixed dataset seed — NOT a parameter — so dev/held-out are stable.
+        let mut rng = Lcg::new(0xA1B2_C3D4_E5F6_0718);
+        let mut xs = Vec::with_capacity(N_TOTAL);
+        let mut ys = Vec::with_capacity(N_TOTAL);
+        for _ in 0..N_TOTAL {
+            let mut x = [0.0; D];
+            for slot in &mut x {
+                *slot = rng.next_signed();
+            }
+            ys.push(dot(&W_TRUE, &x) > 0.0);
+            xs.push(x);
+        }
+        Self { xs, ys }
+    }
+
+    /// Index range for a split. First `N_DEV` are dev; the rest are held out.
+    fn range(split: Split) -> std::ops::Range<usize> {
+        match split {
+            Split::Dev => 0..N_DEV,
+            Split::HeldOut => N_DEV..N_TOTAL,
+        }
+    }
+
+    /// Classification accuracy of weight vector `w` over `split`.
+    fn accuracy(&self, w: &[f64], split: Split) -> (f64, u32) {
+        let range = Self::range(split);
+        let n = range.len();
+        let mut correct = 0usize;
+        for i in range {
+            let pred = dot(w, &self.xs[i]) > 0.0;
+            if pred == self.ys[i] {
+                correct += 1;
+            }
+        }
+        (correct as f64 / n as f64, n as u32)
+    }
+}
+
+/// Dot product over two slices. Used by the dataset synthesis and the accuracy eval.
+fn dot(a: &[f64], b: &[f64]) -> f64 {
+    a.iter().zip(b).map(|(x, y)| x * y).sum()
+}
+
+/// Wilson score interval for a binomial proportion. Tighter and better-behaved than
+/// the normal (Wald) interval near 0/1, and always inside `[0, 1]`. Returns
+/// `(lower, upper)`.
+fn wilson_interval(p: f64, n: u32) -> (f64, f64) {
+    if n == 0 {
+        return (0.0, 1.0);
+    }
+    let n = f64::from(n);
+    let z2 = Z_95 * Z_95;
+    let denom = 1.0 + z2 / n;
+    let center = (p + z2 / (2.0 * n)) / denom;
+    let margin = (Z_95 / denom) * ((p * (1.0 - p) / n) + z2 / (4.0 * n * n)).sqrt();
+    ((center - margin).max(0.0), (center + margin).min(1.0))
+}
+
+/// A finite, fixed-length (`D`) parameter vector with elementwise-additive deltas —
+/// the surface for the linear-classifier vertical and the collaborative contributor
+/// fold.
+///
+/// This is NOT a parallel copy of `GenericSurface`: that surface is full-replacement
+/// (a produced candidate supersedes the baseline), which is the right semantics for
+/// competitive search verticals. The collaborative runner
+/// (`autoresearch_protocol::run_collaborative`) folds many contributor deltas into
+/// one shared artifact through `Surface::apply_delta`; an additive fold is
+/// load-bearing there, so the linear vertical keeps its own surface that impls
+/// `Surface<Artifact = GenericArtifact>` with elementwise-additive `apply_delta`.
+/// The artifact type is the shared [`GenericArtifact`] (kind [`ArtifactKind::Config`]);
+/// only the fold semantics differ from `GenericSurface`.
+#[derive(Clone, Debug, Default)]
+pub struct AdditiveSurface;
+
+impl AdditiveSurface {
+    /// The baseline artifact: zero weights => `sign(0) > 0` is false for every sample,
+    /// so accuracy is just the fraction of negatives (~chance).
+    #[must_use]
+    pub fn baseline() -> GenericArtifact {
+        GenericArtifact::baseline(ArtifactKind::Config, D, "")
+    }
+}
+
+impl Surface for AdditiveSurface {
+    type Artifact = GenericArtifact;
+
+    fn id(&self) -> &str {
+        "linear-config"
+    }
+
+    fn validate(&self, artifact: &Self::Artifact) -> Result<(), SurfaceError> {
+        if artifact.params.len() != D {
+            return Err(SurfaceError::Invalid(format!(
+                "expected {D} params, got {}",
+                artifact.params.len()
+            )));
+        }
+        if artifact.params.iter().any(|p| !p.is_finite()) {
+            return Err(SurfaceError::Invalid("params must be finite".into()));
+        }
+        Ok(())
+    }
+
+    fn apply_delta(
+        &self,
+        base: &Self::Artifact,
+        delta: &Self::Artifact,
+    ) -> Result<Self::Artifact, SurfaceError> {
+        if base.params.len() != delta.params.len() {
+            return Err(SurfaceError::Apply("length mismatch".into()));
+        }
+        Ok(GenericArtifact::new(
+            base.kind,
+            base.params
+                .iter()
+                .zip(&delta.params)
+                .map(|(b, d)| b + d)
+                .collect(),
+            base.content.clone(),
+        ))
+    }
+
+    fn to_ref(&self, artifact: &Self::Artifact) -> Result<ArtifactRef, SurfaceError> {
+        self.validate(artifact)?;
+        // Stable content reference: a FNV-1a hash over the bit pattern of each param.
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        for p in &artifact.params {
+            for byte in p.to_bits().to_le_bytes() {
+                hash ^= u64::from(byte);
+                hash = hash.wrapping_mul(0x0000_0100_0000_01B3);
+            }
+        }
+        Ok(ArtifactRef(format!("linear-config:{hash:016x}")))
+    }
+}
+
+/// Scores a [`GenericArtifact`] (kind [`ArtifactKind::Config`]) by its classification
+/// accuracy on the requested split, with a Wilson 95% CI. Holds the deterministic
+/// synthetic dataset.
+///
+/// The local stand-in for a real agent-profile scorer: the same `Scorer` trait seam
+/// the orchestrator consumes, so a production adapter drops in with no orchestrator
+/// change. The lift it produces is a *real* measured accuracy gain on held-out data,
+/// not a hardcoded number.
+#[derive(Clone, Debug)]
+pub struct LinearScorer {
+    data: Dataset,
+}
+
+impl LinearScorer {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            data: Dataset::generate(),
+        }
+    }
+
+    /// Synchronous scoring core (also used internally by any engine's search). The
+    /// `Scorer` trait wraps this in a ready future.
+    fn measure(&self, artifact: &GenericArtifact, split: Split) -> Measurement {
+        let (acc, n) = self.data.accuracy(&artifact.params, split);
+        let (lo, hi) = wilson_interval(acc, n);
+        Measurement {
+            value: acc,
+            ci_lower: lo,
+            ci_upper: hi,
+            n,
+            cost: f64::from(n),
+        }
+    }
+}
+
+impl Default for LinearScorer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Scorer for LinearScorer {
+    type Artifact = GenericArtifact;
+
+    fn id(&self) -> &str {
+        "linear-accuracy"
+    }
+
+    fn score(
+        &self,
+        artifact: &Self::Artifact,
+        split: Split,
+    ) -> impl Future<Output = Result<Measurement, ScorerError>> + Send {
+        // Pure CPU work; resolve immediately. No `async fn` so the future is `Send`
+        // regardless of the dataset's contents.
+        let m = self.measure(artifact, split);
+        std::future::ready(Ok(m))
+    }
+}
+
+/// A single contributor's seeded local search over **one slice** of the shared
+/// weight vector — the local, deterministic **stand-in for the `DeMoTrainingEngine`**
+/// (the real training-blueprint / DeMo distributed-training integration).
+///
+/// # The collaborative framing
+///
+/// In `Structure::Collaborative` mode (`docs/MECHANISM.md §6`) many contributors pool
+/// compute onto **one shared artifact**. Each contributor emits a **delta** that the
+/// collaborative runner folds into the running shared artifact via
+/// [`AdditiveSurface::apply_delta`] (elementwise add). This contributor produces a
+/// delta that is non-zero only on the dimensions it "owns" (`dims`), where it places
+/// its best local estimate of the ground-truth weight scaled by `quality`. Folding
+/// several contributors that own **different** dimensions progressively recovers the
+/// true separating hyperplane [`W_TRUE`], so each contributor adds **distinct, real
+/// marginal value** to the shared artifact's held-out accuracy — exactly what the
+/// runner's single-permutation marginal attribution prices. (The held-out accuracy is
+/// a dot product, so these per-dimension marginals are not perfectly separable and the
+/// credit is order-dependent; the runner folds in a canonical order — see
+/// `collaborative.rs`.)
+///
+/// A **free-rider** is a contributor with `quality == 0.0` (or one that owns no
+/// dimension): its delta is all-zeros, it moves the shared artifact's held-out score
+/// by nothing, and the runner credits it **zero share** — the fairness property that
+/// improves on the training-blueprint's GPU-minutes baseline (which would pay it for
+/// "burning compute" anyway).
+///
+/// # Honest seam — NOT a real GPU cluster
+///
+/// This produces a delta by a **seeded local search on its owned dimensions**, with no
+/// `rand`, no clock, and no I/O — the same determinism the rest of the vertical
+/// relies on. It is the marked stand-in for the real **DeMo (Decoupled Momentum)
+/// distributed training** engine, whose contribution verification today is
+/// **GPU-minutes + a statistical gradient check** (a KNOWN GAP — gameable by
+/// collusion, no held-out gating; `docs/MECHANISM.md §6.1`). The collaborative runner
+/// this contributor feeds **improves on that** by pricing each delta on its
+/// **held-out-eval-gated marginal contribution** instead of GPU-minutes (§6.2). We do
+/// not claim a real cluster.
+#[derive(Clone, Debug)]
+pub struct SharedSearchContributor {
+    seed: u64,
+    /// The dimensions of the shared weight vector this contributor improves. A
+    /// contributor owning a non-empty slice adds real marginal value; an empty slice
+    /// (or `quality == 0`) is a free-rider that contributes a zero delta.
+    dims: Vec<usize>,
+    /// How well this contributor recovers the true weight on its owned dims, in
+    /// `[0, 1]`. `1.0` recovers [`W_TRUE`] exactly on those dims; `0.0` is a free-rider.
+    quality: f64,
+}
+
+impl SharedSearchContributor {
+    /// A productive contributor that improves the shared artifact on `dims` at the
+    /// given `quality` (`1.0` = recovers the true weight on those dims).
+    #[must_use]
+    pub fn new(seed: u64, dims: Vec<usize>, quality: f64) -> Self {
+        Self {
+            seed,
+            dims,
+            quality: quality.clamp(0.0, 1.0),
+        }
+    }
+
+    /// A free-rider: owns nothing, contributes an all-zeros delta, earns nothing. Named
+    /// explicitly so the collaborative tests/e2e read clearly.
+    #[must_use]
+    pub fn free_rider(seed: u64) -> Self {
+        Self {
+            seed,
+            dims: Vec::new(),
+            quality: 0.0,
+        }
+    }
+
+    /// Produce this contributor's delta: zero everywhere except its owned dimensions,
+    /// where it places a seeded local estimate of `quality * W_TRUE[dim]`.
+    ///
+    /// The seed perturbs the estimate deterministically so two contributors owning the
+    /// same dimension would still differ (no tie), but the perturbation is small enough
+    /// that a productive contributor reliably moves held-out accuracy. A free-rider
+    /// (`quality == 0` or no dims) returns the all-zeros delta.
+    fn delta(&self) -> GenericArtifact {
+        let mut params = vec![0.0; D];
+        if self.quality > 0.0 {
+            let mut rng = Lcg::new(self.seed);
+            for &dim in &self.dims {
+                if dim < D {
+                    // Recover quality * W_TRUE[dim] with a small deterministic jitter.
+                    let jitter = 0.05 * rng.next_signed();
+                    params[dim] = self.quality * W_TRUE[dim] + jitter;
+                }
+            }
+        }
+        GenericArtifact::new(ArtifactKind::Config, params, String::new())
+    }
+}
+
+impl Engine for SharedSearchContributor {
+    type Artifact = GenericArtifact;
+
+    fn id(&self) -> &str {
+        "shared-search-contributor"
+    }
+
+    fn produce(
+        &self,
+        _ctx: &EngineContext,
+    ) -> impl Future<Output = Result<Self::Artifact, EngineError>> + Send {
+        std::future::ready(Ok(self.delta()))
     }
 }
 
@@ -796,11 +1151,12 @@ impl Scorer for HumanPanelScorer {
 /// with the declared `ScorerKind` ([`KindDispatchScorer::kind`] is asserted equal to
 /// the constructing kind in the unit tests).
 ///
-/// The [`ScorerKind::HeldOutEval`] arm reuses [`crate::config_opt::LinearScorer`] (the
-/// M1 agent-profile stand-in), so all four kinds are reachable through one type.
+/// The [`ScorerKind::HeldOutEval`] arm reuses [`LinearScorer`] (the relocated M1
+/// linear-classifier stand-in for a real agent-profile scorer), so all four kinds are
+/// reachable through one type.
 pub enum KindDispatchScorer {
-    /// Held-out replay eval (the M1 agent-profile stand-in).
-    HeldOutEval(crate::config_opt::LinearScorer),
+    /// Held-out replay eval (the M1 linear-classifier stand-in).
+    HeldOutEval(LinearScorer),
     /// The hidden-reference private oracle (Scenario A — the quantum case).
     PrivateOracle(PrivateOracleScorer),
     /// Privileged / expensive hardware (STAND-IN — see [`PrivilegedHardwareScorer`]).
@@ -812,8 +1168,8 @@ pub enum KindDispatchScorer {
 /// Resolve a future that is guaranteed to complete on its first poll (every scorer's
 /// `score` here is a `std::future::ready(...)` over pure CPU work). The dispatcher
 /// needs the arms' results synchronously to wrap them in ONE `ready` future; the
-/// `HeldOutEval` arm ([`crate::config_opt::LinearScorer`]) returns such a future, so
-/// a single poll with a no-op waker yields its value without an executor.
+/// `HeldOutEval` arm ([`LinearScorer`]) returns such a future, so a single poll with a
+/// no-op waker yields its value without an executor.
 fn block_on_ready<F: Future>(fut: F) -> F::Output {
     use std::task::{Context, Poll, Waker};
 
@@ -845,7 +1201,7 @@ impl KindDispatchScorer {
 }
 
 impl Scorer for KindDispatchScorer {
-    type Artifact = ConfigArtifact;
+    type Artifact = GenericArtifact;
 
     fn id(&self) -> &str {
         match self {
@@ -887,10 +1243,8 @@ mod tests {
     use super::*;
     use autoresearch_runtime::types::Gate;
 
-    fn art(params: [f64; D]) -> ConfigArtifact {
-        ConfigArtifact {
-            params: params.to_vec(),
-        }
+    fn art(params: [f64; D]) -> GenericArtifact {
+        GenericArtifact::new(ArtifactKind::Config, params.to_vec(), String::new())
     }
 
     // --- oracle privacy invariant -----------------------------------------
@@ -1293,7 +1647,7 @@ mod tests {
 
     #[tokio::test]
     async fn kind_dispatch_reports_the_declared_kind_for_each_arm() {
-        let held = KindDispatchScorer::HeldOutEval(crate::config_opt::LinearScorer::new());
+        let held = KindDispatchScorer::HeldOutEval(LinearScorer::new());
         assert_eq!(held.kind(), ScorerKind::HeldOutEval);
         assert_eq!(held.id(), "linear-accuracy");
 

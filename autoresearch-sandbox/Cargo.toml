@@ -12,5 +12,6 @@ autoresearch-protocol = { path = "../autoresearch-protocol" }
 thiserror = "2"
 
 [dev-dependencies]
+autoresearch-generic-engine = { path = "../autoresearch-generic-engine" }
 autoresearch-verticals = { path = "../autoresearch-verticals" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
