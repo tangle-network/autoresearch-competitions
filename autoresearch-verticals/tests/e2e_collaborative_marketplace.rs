@@ -3,13 +3,14 @@
 //!
 //! # Part A — Collaborative competition (`docs/MECHANISM.md §6`)
 //!
-//! Several contributors pool compute onto ONE shared [`ConfigArtifact`]. Each emits a
+//! Several contributors pool compute onto ONE shared [`GenericArtifact`]. Each emits a
 //! delta that the collaborative runner folds into the running shared artifact via
-//! [`ConfigSurface::apply_delta`], scoring the result on the held-out split. Payout is
-//! by **held-out-gated, single-permutation marginal contribution** (a first-difference
-//! estimator over a canonical fold order, exact under orthogonal deltas — see
-//! `collaborative.rs`; NOT a permutation-invariant Shapley value) — the improvement over
-//! the training-blueprint's GPU-minutes-only baseline:
+//! [`AdditiveSurface::apply_delta`] (elementwise-additive), scoring the result on
+//! the held-out split. Payout is by **held-out-gated, single-permutation marginal
+//! contribution** (a first-difference estimator over a canonical fold order, exact
+//! under orthogonal deltas — see `collaborative.rs`; NOT a permutation-invariant
+//! Shapley value) — the improvement over the training-blueprint's GPU-minutes-only
+//! baseline:
 //!
 //! - the shared artifact reaches a real held-out lift `> 0.30` (measured ~0.51);
 //! - a **free-rider** (zero-marginal delta) earns **0 share** and **0 payout**;
@@ -17,6 +18,16 @@
 //! - payouts **conserve the pool** (flooring drops dust, never mints);
 //! - swapping the productive contributors for baseline-only deltas makes the shared
 //!   artifact miss the gate, and then **NOBODY is paid** (the held-out gate bites).
+//!
+//! # Why a dedicated additive surface (not `GenericSurface`)
+//!
+//! `GenericSurface::apply_delta` is full-replacement (a produced candidate supersedes
+//! the baseline) — the right semantics for the competitive search verticals. The
+//! collaborative fold is fundamentally additive: each contributor's delta must sum
+//! onto the running shared artifact, not replace it. The linear vertical therefore
+//! keeps its own [`AdditiveSurface`] — a surface over the SAME [`GenericArtifact`]
+//! type with elementwise-additive `apply_delta`. Only the fold semantics differ; the
+//! artifact type is unified.
 //!
 //! # Part B — Marketplace flywheel (`docs/MECHANISM.md §10`)
 //!
@@ -35,6 +46,7 @@
 //! (§6.2). Every number below is measured on real held-out data through the same scorer
 //! the Referee would use — nothing is mocked.
 
+use autoresearch_generic_engine::GenericArtifact;
 use autoresearch_protocol::collaborative::{CollaborativeOutcome, Contribution, run_collaborative};
 use autoresearch_protocol::orchestrator::CompetitionConfig;
 use autoresearch_runtime::marketplace::{
@@ -45,9 +57,7 @@ use autoresearch_runtime::traits::{Scorer, Surface};
 use autoresearch_runtime::types::{
     ArtifactRef, Cadence, Gate, Knobs, Measurement, ScorerKind, Split, Structure, Visibility,
 };
-use autoresearch_verticals::{
-    ConfigArtifact, ConfigSurface, LinearScorer, SharedSearchContributor,
-};
+use autoresearch_verticals::{AdditiveSurface, LinearScorer, SharedSearchContributor};
 
 const POOL_WEI: u128 = 1_000_000;
 const COMPETITION_ID: u64 = 42;
@@ -109,9 +119,9 @@ fn make_contributor(c: &Contribution) -> SharedSearchContributor {
 
 #[tokio::test]
 async fn collaborative_pools_one_artifact_pays_marginal_freerider_zero() {
-    let surface = ConfigSurface;
+    let surface = AdditiveSurface;
     let scorer = LinearScorer::new();
-    let baseline = ConfigArtifact::baseline();
+    let baseline = AdditiveSurface::baseline();
     let cfg = collaborative_cfg();
 
     let outcome = run_collaborative(
@@ -235,9 +245,9 @@ async fn collaborative_pools_one_artifact_pays_marginal_freerider_zero() {
 /// pool does not exist and NOBODY is paid — even though "work" was submitted.
 #[tokio::test]
 async fn collaborative_gate_bites_nobody_paid_without_real_improvement() {
-    let surface = ConfigSurface;
+    let surface = AdditiveSurface;
     let scorer = LinearScorer::new();
-    let baseline = ConfigArtifact::baseline();
+    let baseline = AdditiveSurface::baseline();
     let cfg = collaborative_cfg();
 
     // Swap in a baseline-only field: every contributor (including the "productive" ids)
@@ -268,9 +278,9 @@ async fn collaborative_gate_bites_nobody_paid_without_real_improvement() {
 /// and an exclusive listing cannot be double-sold.
 #[tokio::test]
 async fn marketplace_lists_and_sells_the_certified_collaborative_artifact() {
-    let surface = ConfigSurface;
+    let surface = AdditiveSurface;
     let scorer = LinearScorer::new();
-    let baseline = ConfigArtifact::baseline();
+    let baseline = AdditiveSurface::baseline();
     let cfg = collaborative_cfg();
 
     // Re-run the collaborative competition to obtain the certified shared artifact and
@@ -386,8 +396,8 @@ async fn marketplace_lists_and_sells_the_certified_collaborative_artifact() {
 
 /// Fold the four productive contributors' deltas onto the baseline to reconstruct the
 /// shared artifact, deterministically — the same fold the collaborative runner does.
-fn fold_productive(surface: &ConfigSurface) -> ConfigArtifact {
-    let mut shared = ConfigArtifact::baseline();
+fn fold_productive(surface: &AdditiveSurface) -> GenericArtifact {
+    let mut shared = AdditiveSurface::baseline();
     for &dim in &[0usize, 1, 3, 2] {
         let c = SharedSearchContributor::new(dim as u64 + 1, vec![dim], 1.0);
         // The contributor's delta is produced via its engine; fold it in.
@@ -399,11 +409,11 @@ fn fold_productive(surface: &ConfigSurface) -> ConfigArtifact {
 /// Apply one contributor's delta. The contributor's `produce` is async; we drive its
 /// ready future to completion synchronously (it is a `std::future::ready`).
 fn fold_one(
-    surface: &ConfigSurface,
-    base: &ConfigArtifact,
+    surface: &AdditiveSurface,
+    base: &GenericArtifact,
     _dim: usize,
     contributor: &SharedSearchContributor,
-) -> ConfigArtifact {
+) -> GenericArtifact {
     use autoresearch_runtime::traits::{Engine, EngineContext};
     let ctx = EngineContext {
         competition: COMPETITION_ID,

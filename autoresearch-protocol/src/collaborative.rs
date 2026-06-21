@@ -72,10 +72,11 @@
 //! GPU cluster here. The contributor that produces each delta is supplied by the
 //! caller (`make_contributor`); the verticals ship a **local deterministic stand-in**
 //! ([`autoresearch_verticals::SharedSearchContributor`]) that improves the shared
-//! [`ConfigArtifact`](autoresearch_verticals::ConfigArtifact) toward the ground truth
-//! by a seeded local step. The *mechanism* (held-out gating + single-permutation
-//! marginal credit + conserving settlement) is real and fully tested; the training
-//! engine behind a delta is the marked stand-in. We do not claim a real cluster.
+//! [`GenericArtifact`](autoresearch_generic_engine::GenericArtifact) toward the ground
+//! truth by a seeded local step. The *mechanism* (held-out gating +
+//! single-permutation marginal credit + conserving settlement) is real and fully
+//! tested; the training engine behind a delta is the marked stand-in. We do not claim
+//! a real cluster.
 
 use autoresearch_runtime::reward::{BPS_DENOM, Payout, settle_snapshot_topk};
 use autoresearch_runtime::traits::{Engine, EngineContext, Scorer, Surface};
@@ -88,7 +89,7 @@ use crate::orchestrator::{CompetitionConfig, ProtocolError};
 /// reference to the delta the contributor produced; the concrete delta artifact is
 /// produced by the caller's `make_contributor` engine and folded into the running
 /// shared artifact via [`Surface::apply_delta`]. For the local stand-in this is a
-/// `ConfigArtifact` delta; for the production DeMo seam it is a model-update delta.
+/// `GenericArtifact` delta; for the production DeMo seam it is a model-update delta.
 #[derive(Clone, Debug)]
 pub struct Contribution {
     /// The contributor (a GPU pool, in the production framing).

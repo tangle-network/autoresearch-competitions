@@ -18,6 +18,7 @@
 //! adversary the m-of-n committee is designed to tolerate. Conservation of stake is
 //! asserted in both directions.
 
+use autoresearch_generic_engine::{ArtifactKind, GenericArtifact, GenericEngine, GenericSurface};
 use autoresearch_protocol::dispute::{ValidatorVerdict, collect_verdicts, committee_verdict};
 use autoresearch_protocol::slash::{SlashPolicy, resolve_dispute};
 use autoresearch_protocol::{
@@ -28,11 +29,17 @@ use autoresearch_runtime::traits::{Engine, EngineContext};
 use autoresearch_runtime::types::{
     ArtifactRef, Cadence, Gate, Knobs, Lift, ScorerKind, Structure, Visibility,
 };
-use autoresearch_verticals::{ConfigArtifact, ConfigSurface, LinearScorer, LocalSearchEngine};
+use autoresearch_verticals::LinearScorer;
 
 const POOL_WEI: u128 = 1_000_000;
 const RESEARCHER_STAKE: u128 = 5_000;
 const CHALLENGER_STAKE: u128 = 500;
+
+/// Linear-classifier dimensionality (mirrors `scorers::D`).
+const D: usize = 4;
+
+/// Search budget for the GenericEngine stand-in (matches e2e_oneshot_competitive).
+const SEARCH_BUDGET: usize = 2000;
 
 fn knobs() -> Knobs {
     Knobs {
@@ -58,8 +65,11 @@ fn slash_policy() -> SlashPolicy {
 
 /// Reconstruct the winner's actual candidate artifact by re-running their engine.
 /// The engine is deterministic per seed, so this is the exact artifact that won.
-async fn winning_candidate(seed: u64) -> ConfigArtifact {
-    let engine = LocalSearchEngine::new(seed);
+async fn winning_candidate(seed: u64) -> GenericArtifact {
+    let baseline = GenericArtifact::baseline(ArtifactKind::Config, D, "");
+    let scorer = LinearScorer::new();
+    let engine =
+        GenericEngine::new("0xwinner", baseline.clone(), scorer, seed).with_budget(SEARCH_BUDGET);
     let ctx = EngineContext {
         competition: 1,
         baseline_ref: ArtifactRef("baseline".into()),
@@ -75,9 +85,9 @@ async fn winning_candidate(seed: u64) -> ConfigArtifact {
 
 #[tokio::test]
 async fn frivolous_challenge_is_upheld_and_slashes_challenger() {
-    let surface = ConfigSurface;
+    let surface = GenericSurface;
     let scorer = LinearScorer::new();
-    let baseline = ConfigArtifact::baseline();
+    let baseline = GenericArtifact::baseline(ArtifactKind::Config, D, "");
     let gate = Gate::default();
 
     // 1. Run the real M1 competition.
@@ -98,7 +108,13 @@ async fn frivolous_challenge_is_upheld_and_slashes_challenger() {
     };
     let outcome =
         run_oneshot_competitive(&cfg, &surface, &scorer, &baseline, &researchers, |run| {
-            LocalSearchEngine::new(run.seed)
+            GenericEngine::new(
+                run.researcher.clone(),
+                baseline.clone(),
+                scorer.clone(),
+                run.seed,
+            )
+            .with_budget(SEARCH_BUDGET)
         })
         .await
         .expect("competition runs");
@@ -173,14 +189,14 @@ async fn frivolous_challenge_is_upheld_and_slashes_challenger() {
 
 #[tokio::test]
 async fn legit_challenge_on_fabricated_score_is_overturned_and_slashes_researcher() {
-    let surface = ConfigSurface;
+    let surface = GenericSurface;
     let scorer = LinearScorer::new();
-    let baseline = ConfigArtifact::baseline();
+    let baseline = GenericArtifact::baseline(ArtifactKind::Config, D, "");
     let gate = Gate::default();
 
     // A fabricated certification: a Referee/researcher claims the BASELINE clears the
     // gate (it does not — zero lift over itself). Re-scoring exposes the fraud.
-    let fabricated_candidate = ConfigArtifact::baseline();
+    let fabricated_candidate = GenericArtifact::baseline(ArtifactKind::Config, D, "");
     let original_clears = true; // the fraudulent claim
 
     let verdicts = collect_verdicts(

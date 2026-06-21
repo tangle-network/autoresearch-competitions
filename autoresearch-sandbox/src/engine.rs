@@ -7,7 +7,7 @@
 //! **runs the researcher's submitted method** inside it against the proposer's sealed
 //! target + dev split, returns the produced candidate, and **tears the sandbox down**.
 //!
-//! It replaces the in-process stand-in (`LocalSearchEngine` running on the
+//! It replaces the in-process stand-in (the shared `GenericEngine` running on the
 //! researcher's side) with **operator-hosted execution**: the researcher submits a
 //! method ([`method_ref`](SandboxMethodEngine::method_ref)); the operator provides and
 //! runs the sandbox. With [`SandboxBackend::Tee`] + no-egress the method can improve

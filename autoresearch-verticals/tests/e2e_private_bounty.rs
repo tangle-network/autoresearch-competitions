@@ -1,5 +1,5 @@
 //! Scenario C proof — a **Private Enterprise Bounty** at [`PrivacyTier::BlackBox`]
-//! over the config-opt vertical (`docs/PRIVACY.md §13`).
+//! over the linear-classifier surface (`docs/PRIVACY.md §13`).
 //!
 //! This is the M4 end-to-end proof that a competition can run **privately** without
 //! lying about the guarantee. A proposer posts a sealed held-out task; researchers
@@ -30,6 +30,7 @@
 //! attestation hash is committed as a *structural commitment*, not a verified quote;
 //! `AttestationVerdict::Verified` is never reached.
 
+use autoresearch_generic_engine::{ArtifactKind, GenericArtifact, GenericEngine, GenericSurface};
 use autoresearch_protocol::orchestrator::{CompetitionConfig, ResearcherRun};
 use autoresearch_protocol::private::{PrivateCompetitionConfig, run_private_competitive};
 use autoresearch_runtime::attestation::{AttestationVerdict, TeeType};
@@ -39,9 +40,15 @@ use autoresearch_runtime::types::{
     ArtifactRef, Cadence, Gate, Knobs, ScorerKind, Structure, Visibility,
 };
 use autoresearch_runtime::{ResearcherFeedback, Surface};
-use autoresearch_verticals::{ConfigArtifact, ConfigSurface, LinearScorer, LocalSearchEngine};
+use autoresearch_verticals::LinearScorer;
 
 const POOL_WEI: u128 = 1_000_000;
+
+/// Linear-classifier dimensionality (mirrors `scorers::D`).
+const D: usize = 4;
+
+/// Search budget for the GenericEngine stand-in (matches e2e_oneshot_competitive).
+const SEARCH_BUDGET: usize = 2000;
 
 /// Private Enterprise Bounty knobs: `Competitive × OneShot × Private × HeldOutEval`.
 /// (Scenario C is Continuous in the canon; the M4 private runner is the one-shot
@@ -57,9 +64,9 @@ fn private_knobs() -> Knobs {
 
 #[tokio::test]
 async fn scenario_c_black_box_bounty_withholds_lift_but_pays_winner() {
-    let surface = ConfigSurface;
+    let surface = GenericSurface;
     let scorer = LinearScorer::new();
-    let baseline = ConfigArtifact::baseline();
+    let baseline = GenericArtifact::baseline(ArtifactKind::Config, D, "");
 
     // The proposer's baseline is carried as an OPAQUE SEALED handle — never plaintext.
     // (Here we still pass the concrete baseline to the referee for scoring; the sealed
@@ -97,7 +104,13 @@ async fn scenario_c_black_box_bounty_withholds_lift_but_pays_winner() {
 
     let outcome =
         run_private_competitive(&cfg, &surface, &scorer, &baseline, &researchers, |run| {
-            LocalSearchEngine::new(run.seed)
+            GenericEngine::new(
+                run.researcher.clone(),
+                baseline.clone(),
+                scorer.clone(),
+                run.seed,
+            )
+            .with_budget(SEARCH_BUDGET)
         })
         .await
         .expect("private competition should run");
@@ -228,10 +241,12 @@ async fn black_box_engine_context_carries_no_raw_data_handle() {
     let caps = PrivacyTier::BlackBox.capabilities();
     assert!(!caps.raw_data_access, "black-box withholds raw data access");
     // Sanity that the sealed-handle plumbing produces opaque references, not plaintext.
-    let surface = ConfigSurface;
-    let r: ArtifactRef = surface.to_ref(&ConfigArtifact::baseline()).unwrap();
+    let surface = GenericSurface;
+    let r: ArtifactRef = surface
+        .to_ref(&GenericArtifact::baseline(ArtifactKind::Config, D, ""))
+        .unwrap();
     assert!(
-        r.0.starts_with("config:"),
+        r.0.starts_with("generic:"),
         "handle is an opaque ref: {}",
         r.0
     );

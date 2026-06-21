@@ -18,35 +18,41 @@
 //! nothing is mocked or hardcoded. This is the "37% -> 39.9% and still climbing"
 //! arena, made concrete and deterministic.
 
+use autoresearch_generic_engine::{ArtifactKind, GenericArtifact, GenericSurface};
 use autoresearch_protocol::continuous::{
     ContinuousArena, ContinuousSchedule, EntryKind, to_micros,
 };
 use autoresearch_runtime::reward::{RecordBeat, settle_record_bounty, total_wei};
 use autoresearch_runtime::traits::Scorer;
 use autoresearch_runtime::types::{Gate, Measurement, Split};
-use autoresearch_verticals::{ConfigArtifact, ConfigSurface, LinearScorer};
+use autoresearch_verticals::LinearScorer;
 
-/// The ground-truth separating hyperplane (mirrors `config_opt::W_TRUE`).
+/// The ground-truth separating hyperplane (mirrors `scorers::W_TRUE`).
 const W_TRUE: [f64; 4] = [1.0, -2.0, 0.5, 1.5];
 /// A deliberately-wrong starting direction. Interpolating from here toward `W_TRUE`
 /// rotates the boundary, so accuracy climbs as the fraction increases.
 const W_START: [f64; 4] = [-1.5, -1.0, -1.0, 0.2];
 
 /// Build the strengthening artifact at interpolation fraction `f` in `[0, 1]`.
-fn interp(f: f64) -> ConfigArtifact {
-    ConfigArtifact {
-        params: (0..4)
+fn interp(f: f64) -> GenericArtifact {
+    GenericArtifact::new(
+        ArtifactKind::Config,
+        (0..4)
             .map(|i| W_START[i] * (1.0 - f) + W_TRUE[i] * f)
             .collect(),
-    }
+        String::new(),
+    )
 }
 
 #[tokio::test]
 async fn public_continuous_arena_leaderboard_keeps_moving() {
-    let surface = ConfigSurface;
+    let surface = GenericSurface;
     let scorer = LinearScorer::new();
     let baseline_measurement: Measurement = scorer
-        .score(&ConfigArtifact::baseline(), Split::HeldOut)
+        .score(
+            &GenericArtifact::baseline(ArtifactKind::Config, 4, ""),
+            Split::HeldOut,
+        )
         .await
         .unwrap();
 

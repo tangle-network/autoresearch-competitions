@@ -1779,6 +1779,7 @@ dependencies = [
 name = "autoresearch-sandbox"
 version = "0.1.0"
 dependencies = [
+ "autoresearch-generic-engine",
  "autoresearch-protocol",
  "autoresearch-runtime",
  "autoresearch-verticals",

@@ -67,10 +67,11 @@ They **compose** rather than compete: `GenericEngine` can search over (say)
 training recipes and dispatch each candidate to `DistributedTrainingEngine` to
 evaluate — outer search, inner producer.
 
-The existing `GenericArtifact`-free verticals (`config_opt`, `nanogpt`,
-`distributed_training`, the four `ScorerKind` scorers) keep their own artifact types
-and engines and continue to work. Migrating them onto `GenericArtifact` +
-`GenericEngine` is optional cleanup, not a requirement.
+The remaining `GenericArtifact`-free verticals (`nanogpt`, which drives real
+external training, and `distributed_training`, whose recipe structure a numeric
+search cannot represent) keep their own artifact types and engines. The
+`ScorerKind` dispatch and the linear-classifier demo now run on `GenericArtifact`
+behind the shared `GenericEngine`.
 
 ## How to add a new vertical
 
